@@ -95,6 +95,16 @@ def get_record(record_id, path=None):
         conn.close()
 
 
+def neighbour_ids(record_id, path=None):
+    conn = connect(path)
+    try:
+        p = conn.execute("SELECT MAX(id) FROM records WHERE id<?", (record_id,)).fetchone()[0]
+        n = conn.execute("SELECT MIN(id) FROM records WHERE id>?", (record_id,)).fetchone()[0]
+        return p, n
+    finally:
+        conn.close()
+
+
 def previous_hash_for(prev_record):
     return hashing.recompute_hash(prev_record) if prev_record else hashing.GENESIS_HASH
 

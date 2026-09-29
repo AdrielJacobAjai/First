@@ -23,6 +23,15 @@ pytest
 guide and GPS need HTTPS (or localhost); without them use the photo picker, and GPS is stored as
 `unavailable`.
 
+## Records, log and PDF reports
+
+Every test (including rejected photos) is stored in `chromaseal.db` (SQLite) with its photo in
+`captures/`. Browse and filter them at `/log` (operator, outcome, date range). Each record has a
+verify page (`/verify/<id>`, with Previous/Next) and a PDF report (`/report/<id>.pdf`) containing
+operator, UTC time, GPS coordinates (plus a map link), distances, both images, the three hashes and
+the verification result. The PDF is generated with `reportlab` (added to requirements beyond the
+original brief list). Keep the printed record hash with the case file to anchor it externally.
+
 ## How it works
 
 1. **Quality gate** (blur via Laplacian variance, glare via bright-pixel fraction) — bad photos

@@ -54,3 +54,27 @@ def test_tamper_disabled_without_flag(client):
     app_module.DEMO_MODE = False
     rid = post(client).get_json()["record_id"]
     assert client.post(f"/tamper-demo/{rid}").status_code == 404
+
+
+def test_pdf_report_and_navigation(client):
+    a = post(client, "positive", "warm_lamp", ).get_json()["record_id"]
+    b = post(client, "intermediate", "shade").get_json()["record_id"]
+    r = client.get(f"/report/{a}.pdf")
+    assert r.status_code == 200 and r.data[:5] == b"%PDF-" and r.mimetype == "application/pdf"
+    assert client.get("/report/999.pdf").status_code == 404
+    assert b"Next" not in client.get(f"/verify/{b}").data      # last record: no dead link
+    assert b"Next" in client.get(f"/verify/{a}").data
+    assert b"Previous" in client.get(f"/verify/{b}").data
+    assert b"/report/" in client.get("/log").data
+
+
+def test_pdf_contains_gps(client):
+    import io as _io
+    data = {"photo": (_io.BytesIO(synth.encode_jpeg(synth.photograph())), "p.jpg"), "operator_id": "OP",
+            "source": "guide", "gps_lat": "12.971598", "gps_lon": "77.594562"}
+    rid = client.post("/analyze", data=data, content_type="multipart/form-data").get_json()["record_id"]
+    import report as rp, db as dbm
+    rec, _ = dbm.get_record(rid)
+    assert rec["fields"]["gps_lat"] == 12.971598
+    pdf = client.get(f"/report/{rid}.pdf").data
+    assert len(pdf) > 5000

@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 
 import cv2
 import numpy as np
-from flask import Flask, abort, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, url_for
 
 import db
 import hashing
+import report
 from colour_pipeline import analyze
 from kit_profiles import DEFAULT_PROFILE, KIT_PROFILES
 from reference_card import BOARD_ASPECT
@@ -142,8 +143,28 @@ def verify(record_id):
     if rec is None:
         abort(404)
     checks = hashing.verify_record(rec, _read_image(rec), db.previous_hash_for(prev))
+    before, after = db.neighbour_ids(record_id)
     return render_template("verify.html", rec=rec, f=rec["fields"], checks=checks,
-                           record_id=record_id, prev_id=prev["id"] if prev else None)
+                           record_id=record_id, prev_id=prev["id"] if prev else None,
+                           before=before, after=after)
+
+
+@app.get("/report/<int:record_id>.pdf")
+def report_pdf(record_id):
+    rec, prev = db.get_record(record_id)
+    if rec is None:
+        abort(404)
+    f = rec["fields"]
+    checks = hashing.verify_record(rec, _read_image(rec), db.previous_hash_for(prev))
+    raw = os.path.join(CAPTURE_DIR, os.path.basename(f["image_path"]))
+    corrected = raw.replace(".jpg", "_corrected.jpg")
+    pdf = report.build_report(
+        record_id, f, {k: rec[k] for k in ("record_hash", "prev_hash", "image_hash")},
+        checks, raw, corrected, prev["id"] if prev else None)
+    name = f"chromaseal_{f['test_id']}.pdf"
+    disp = "attachment" if request.args.get("download") else "inline"
+    return Response(pdf, mimetype="application/pdf",
+                    headers={"Content-Disposition": f'{disp}; filename="{name}"'})
 
 
 @app.post("/tamper-demo/<int:record_id>")
