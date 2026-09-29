@@ -30,5 +30,18 @@
    - Verification page per record; officers see only their own
    - PDF report with GPS, images and hashes
 
+## Reference card: what each patch does
+
+| Patches | Role |
+|---|---|
+| 1-3: white, grey, black | Lighting fit (brightness and tint) |
+| 4-6: red, green, blue | Lighting fit (how one colour bleeds into another) |
+| 7: pale | **Unreacted colour**: what a negative strip should look like |
+| 8: intermediate purple | Visual reference for an in-between shade. Not used in the lighting fit or the Positive/Negative decision. Its brightness only helps confirm the card was found correctly, and it is measured and saved at calibration |
+| 9: purple-black | **Target colour**: what a positive strip should look like |
+
+- After the lighting is corrected, the app measures how close the strip's colour is to the Target (patch 9) and to the Unreacted colour (patch 7). That distance decides Positive, Negative or Inconclusive.
+- Using patch 8 as an extra check on the correction was considered but is **not built**.
+
 **Security:** officer / admin roles, lockout, CSRF, session timeout.
 **Every result is PRESUMPTIVE:** laboratory confirmation required.
