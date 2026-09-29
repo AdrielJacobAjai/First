@@ -104,6 +104,8 @@ load_calibration()
 _ROW_X0, _ROW_X1 = 0.06, 0.94
 _ROW_Y, _ROW_H = 0.10, 0.34
 _GAP = 0.008
+# Black border thickness that is visible around the paper, as a fraction of the board height
+BORDER_INSET_H = 0.035
 STRIP_WINDOW = (0.30, 0.56, 0.40, 0.32)
 
 

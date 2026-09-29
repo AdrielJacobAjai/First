@@ -63,6 +63,36 @@ def photograph(strip="positive", light="daylight", blur=0, exposure=1.0,
     return bgr
 
 
+def in_scene(board_bgr, angle=0.0, skew=0.0, bg=(60, 90, 70), out=(1600, 1200), fill=0.6, quarter_turns=0,
+             border_grey=None):
+    """Put the board into a larger 'real world' photo: rotated, seen at an angle, on a background.
+
+    skew: perspective strength (0..0.25); border_grey: repaint the near-black border with this grey
+    level to mimic a printer that cannot print true black.
+    """
+    board = board_bgr.copy()
+    if border_grey is not None:
+        m = np.all(board < 12, axis=2)
+        board[m] = border_grey
+    h, w = board.shape[:2]
+    ow, oh = out
+    sc = fill * min(ow / w, oh / h)
+    src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    dst = (src - [w / 2, h / 2]) * sc
+    dst[:, 0] *= 1 - skew * np.array([1, 1, -1, -1]) * 0.0                       # keep x scale
+    dst[:, 1] *= 1 + skew * np.array([-1, -1, 1, 1]) * np.array([1, 1, 1, 1]) * 0.5   # top edge shorter/longer
+    dst[:, 0] *= 1 - skew * np.array([1, 1, 0, 0])                              # narrower at the top
+    ang = np.deg2rad(angle)
+    R = np.array([[np.cos(ang), -np.sin(ang)], [np.sin(ang), np.cos(ang)]])
+    dst = dst @ R.T + [ow / 2, oh / 2]
+    M = cv2.getPerspectiveTransform(src, dst.astype(np.float32))
+    scene = np.zeros((oh, ow, 3), np.uint8)
+    scene[:] = bg
+    warped = cv2.warpPerspective(board, M, (ow, oh), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_TRANSPARENT,
+                                 dst=scene)
+    return np.rot90(warped, quarter_turns).copy()
+
+
 def encode_jpeg(bgr):
     ok, buf = cv2.imencode(".jpg", bgr, [cv2.IMWRITE_JPEG_QUALITY, 92])
     assert ok

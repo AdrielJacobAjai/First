@@ -88,3 +88,26 @@ def test_file_already_cropped_to_card_without_full_border():
     img = synth.photograph("positive", "shade")
     cropped = img[:-30, 30:]          # border partly cut off on two sides
     assert cp.analyze(cropped, PROFILE, source="file")["outcome"] == "POSITIVE"
+
+
+@pytest.mark.parametrize("name,kw", [
+    ("tilted", dict(angle=15)), ("seen at an angle", dict(angle=5, skew=0.15)),
+    ("phone in portrait", dict(quarter_turns=1)), ("upside down", dict(angle=180)),
+    ("white desk", dict(angle=8, bg=(235, 235, 235))), ("dark table", dict(angle=8, bg=(20, 20, 20))),
+    ("black table, rotated", dict(quarter_turns=3, angle=10, bg=(5, 5, 5))),
+    ("printer-grey border", dict(angle=10, border_grey=70)), ("card small in frame", dict(fill=0.35, angle=12)),
+])
+@pytest.mark.parametrize("light", ["warm_lamp", "shade"])
+def test_card_found_in_real_world_scenes(name, kw, light):
+    photo = synth.in_scene(synth.photograph("positive", light), **kw)
+    r = cp.analyze(photo, PROFILE, source="file")
+    assert r["outcome"] == "POSITIVE", (name, r["reject_reason"])
+
+
+def test_no_card_in_scene_is_rejected_with_clear_message():
+    import cv2
+    rng = np.random.default_rng(0)
+    scene = np.clip(120 + rng.normal(0, 25, (1200, 1600, 3)), 0, 255).astype(np.uint8)   # textured, sharp
+    cv2.rectangle(scene, (300, 300), (900, 800), (30, 30, 30), -1)     # a dark box that is not the card
+    r = cp.analyze(scene, PROFILE, source="file")
+    assert r["outcome"] == "INVALID_CAPTURE" and "whole reference card" in r["reject_reason"]

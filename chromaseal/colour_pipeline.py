@@ -143,27 +143,111 @@ def _aspect_ok(w, h):
     return abs((w / h) / card.BOARD_ASPECT - 1) <= 0.25
 
 
-def locate_board(image_bgr, source):
-    """Return the board crop (BGR) or None.
+WARP_W, WARP_H = 1200, 750      # canonical board size (aspect 1.6)
+DETECT_MAX_SIDE = 1800          # detect on a downscaled copy; keeps large phone photos fast
+MIN_LUM_STEP = 8                # white > grey > black patch luminance, in sRGB levels
 
-    source='guide': the client already cropped to the on-screen alignment
-    frame, so the whole image is the board. source='file': (1) look for the
-    thick black border as the largest dark blob; (2) if that fails and the
-    image itself has the card's proportions, assume it was already cropped to
-    the card; (3) otherwise give up.
+
+def _order_corners(pts):
+    """Order 4 points as top-left, top-right, bottom-right, bottom-left."""
+    pts = np.asarray(pts, dtype=np.float32).reshape(4, 2)
+    s, d = pts.sum(axis=1), np.diff(pts, axis=1).ravel()
+    return np.array([pts[np.argmin(s)], pts[np.argmin(d)], pts[np.argmax(s)], pts[np.argmax(d)]], np.float32)
+
+
+def _quad_from_contour(contour):
+    hull = cv2.convexHull(contour)
+    peri = cv2.arcLength(hull, True)
+    for eps in (0.01, 0.02, 0.03, 0.05, 0.08):
+        approx = cv2.approxPolyDP(hull, eps * peri, True)
+        if len(approx) == 4:
+            return approx.reshape(4, 2)
+    return cv2.boxPoints(cv2.minAreaRect(hull))
+
+
+MIN_ROW_CORRELATION = 0.85      # observed vs expected brightness of the nine patches
+
+
+def _row_lums(board_bgr):
+    rgb = cv2.cvtColor(board_bgr, cv2.COLOR_BGR2RGB)
+    h, w = rgb.shape[:2]
+    boxes = card.patch_boxes(w, h)
+    return [float(np.dot(sample_patch(rgb, boxes[n])[0], (0.2126, 0.7152, 0.0722)) * 255)
+            for n in card.PATCH_ORDER]
+
+
+def _looks_like_board(board_bgr):
+    """True if the nine patch positions show the card's brightness pattern (white > grey > black
+    and a strong match to the expected row), whatever the lighting."""
+    obs = _row_lums(board_bgr)
+    if not (obs[0] - obs[1] >= MIN_LUM_STEP and obs[1] - obs[2] >= MIN_LUM_STEP):
+        return False
+    exp = [float(np.dot(np.array(card.PATCH_TRUE_SRGB[n]) / 255.0, (0.2126, 0.7152, 0.0722)) * 255)
+           for n in card.PATCH_ORDER]
+    if np.std(obs) < 1e-6:
+        return False
+    return float(np.corrcoef(obs, exp)[0, 1]) >= MIN_ROW_CORRELATION
+
+
+def _frame_quads(gray, small_area, dark):
+    """Corner quads of large dark (dark=True) or bright (dark=False) blobs, biggest first."""
+    otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[0]
+    levels = (otsu, 50, 80, 110, 140) if dark else (otsu, 120, 160, 200)
+    for thr in levels:
+        mask = ((gray < thr) if dark else (gray > thr)).astype(np.uint8)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        big = sorted((c for c in contours if cv2.contourArea(c) >= 0.08 * small_area),
+                     key=cv2.contourArea, reverse=True)[:3]
+        for c in big:
+            yield _order_corners(_quad_from_contour(c))
+
+
+def _warp_candidates(image_bgr):
+    """Yield straightened board images for every plausible rectangle in the photo.
+
+    First the dark border frame (its outer edge is the whole board); then, for cards lying on a
+    dark surface where the border blends in, the bright paper inside the border (its edge is the
+    board minus the border, so it is mapped to the matching inner rectangle).
+    """
+    ih, iw = image_bgr.shape[:2]
+    scale = min(1.0, DETECT_MAX_SIDE / max(ih, iw))
+    small = cv2.resize(image_bgr, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA) if scale < 1 else image_bgr
+    gray = cv2.GaussianBlur(cv2.cvtColor(small, cv2.COLOR_BGR2GRAY), (7, 7), 0)
+    area = small.shape[0] * small.shape[1]
+    ix, iy = card.BORDER_INSET_H * WARP_H, card.BORDER_INSET_H * WARP_H
+    full = np.array([[0, 0], [WARP_W, 0], [WARP_W, WARP_H], [0, WARP_H]], np.float32)
+    inner = np.array([[ix, iy], [WARP_W - ix, iy], [WARP_W - ix, WARP_H - iy], [ix, WARP_H - iy]], np.float32)
+    seen = []
+    for dark, dst in ((True, full), (False, inner)):
+        for quad in _frame_quads(gray, area, dark):
+            if any(np.abs(quad - q).max() < 12 for q in seen):
+                continue
+            seen.append(quad)
+            top, left = np.linalg.norm(quad[1] - quad[0]), np.linalg.norm(quad[3] - quad[0])
+            if left > top:                                   # portrait: turn so the long side is on top
+                quad = np.roll(quad, -1, axis=0)
+            M = cv2.getPerspectiveTransform(quad, dst)
+            yield cv2.warpPerspective(small, M, (WARP_W, WARP_H), flags=cv2.INTER_AREA)
+
+
+def locate_board(image_bgr, source):
+    """Return the straightened board image (BGR) or None.
+
+    source='guide': the client already cropped to the on-screen alignment frame, so the whole
+    image is the board. source='file': find the dark rectangular border (relative darkness, any
+    tilt/perspective/rotation), straighten it, and accept it only if the white>grey>black patch
+    ramp reads correctly (tries 180 degrees too). If no frame is found but the image itself has
+    the card's proportions, assume it was already cropped to the card.
     """
     if source == "guide":
         return image_bgr
+    for board in _warp_candidates(image_bgr):
+        for b in (board, cv2.rotate(board, cv2.ROTATE_180)):
+            if _looks_like_board(b):
+                return b
     ih, iw = image_bgr.shape[:2]
-    gray = cv2.GaussianBlur(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY), (5, 5), 0)
-    dark = (gray < 35).astype(np.uint8)
-    n, _, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
-    if n > 1:
-        k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        x, y, w, h = (int(v) for v in stats[k, :4])
-        if w * h >= MIN_CARD_AREA_FRACTION * iw * ih and _aspect_ok(w, h):
-            return image_bgr[y:y + h, x:x + w]
-    if _aspect_ok(iw, ih):
+    if _aspect_ok(iw, ih) and _looks_like_board(image_bgr):
         return image_bgr
     return None
 
@@ -190,7 +274,7 @@ def analyze(image_bgr, profile, source="guide"):
 
     board = locate_board(image_bgr, source)
     if board is None or min(board.shape[:2]) < 100:
-        return _invalid("reference card not fully visible")
+        return _invalid("could not find the whole reference card - keep it flat with its thick black border fully in the photo, and retake")
     rgb = cv2.cvtColor(board, cv2.COLOR_BGR2RGB)
     bh, bw = rgb.shape[:2]
 
