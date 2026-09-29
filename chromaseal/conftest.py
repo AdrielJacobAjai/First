@@ -3,6 +3,20 @@ import importlib
 import pytest
 
 TOKEN = "test-csrf-token"
+
+
+@pytest.fixture(autouse=True)
+def isolate_card_state(tmp_path, monkeypatch):
+    """Tests never touch the real card_calibration.json and never leak calibration into each other."""
+    import kit_profiles
+    import reference_card as card
+    monkeypatch.setattr(card, "CALIBRATION_PATH", str(tmp_path / "card_calibration.json"))
+    card.load_calibration()
+    kit_profiles.KIT_PROFILES.update(kit_profiles.build_profiles())
+    yield
+    monkeypatch.undo()
+    card.load_calibration()
+    kit_profiles.KIT_PROFILES.update(kit_profiles.build_profiles())
 PW = "Sup3r-secret-pw"
 
 

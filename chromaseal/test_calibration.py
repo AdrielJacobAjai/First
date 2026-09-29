@@ -67,3 +67,82 @@ def test_calibration_file_overrides_only_listed_patches(tmp_path, restore_card):
 
 def test_missing_calibration_file_is_fine(tmp_path, restore_card):
     assert card.load_calibration(str(tmp_path / "nope.json")) is None
+
+
+# --- web flow ---------------------------------------------------------------
+import io
+
+from conftest import TOKEN, login
+
+
+def _upload_files(paths):
+    return [(io.BytesIO(open(p, "rb").read()), p.split("/")[-1]) for p in paths]
+
+
+def test_calibration_page_is_admin_only(env):
+    alice, _ = login(env, "alice")
+    assert alice.get("/admin/calibration").status_code == 403
+    assert alice.post("/admin/calibration/reset", data={"_csrf": TOKEN}).status_code == 403
+    assert b"ask an administrator" in alice.get("/").data.lower() or b"calibrated" in alice.get("/").data
+    assert b"calibrate_card.py" not in alice.get("/").data          # no command-line text for officers
+    admin, _ = login(env, "admin1")
+    assert admin.get("/admin/calibration").status_code == 200
+
+
+def test_web_calibration_then_officer_test_works_immediately(env, tmp_path):
+    import kit_profiles as kp
+    printed = printed_card()
+    strip = printed["reagent_positive"]
+    photo = synth.encode_jpeg(synth.photograph(light="warm_lamp", patches=printed, strip_rgb=strip))
+
+    def analyse(client):
+        d = {"photo": (io.BytesIO(photo), "p.jpg"), "source": "guide"}
+        rid = client.post("/analyze", data=d, content_type="multipart/form-data",
+                          headers={"X-CSRF-Token": TOKEN}).get_json()["record_id"]
+        import db
+        return db.get_record(rid)[0]["fields"]["outcome"]
+
+    alice, _ = login(env, "alice")
+    assert analyse(alice) == "INVALID_CAPTURE"                       # uncalibrated printed card
+
+    admin, _ = login(env, "admin1")
+    files = []
+    for i in range(3):
+        files.append((io.BytesIO(synth.encode_jpeg(synth.photograph(light="daylight", patches=printed, seed=i))), f"c{i}.jpg"))
+    r = admin.post("/admin/calibration/measure", data={"photos": files}, content_type="multipart/form-data",
+                   headers={"X-CSRF-Token": TOKEN})
+    assert r.status_code == 200 and b"Measured colours" in r.data
+    import re
+    patches = re.search(rb'name="patches" value="([^"]+)"', r.data).group(1).decode().replace("&#34;", '"')
+    r = admin.post("/admin/calibration/save", data={"_csrf": TOKEN, "patches": patches, "photos": "3", "spread": "0.5"})
+    assert r.status_code == 302
+    assert card.CALIBRATION_INFO["calibrated_by"] == "admin1"
+    assert analyse(alice) == "POSITIVE"                              # no restart needed
+
+    admin.post("/admin/calibration/reset", data={"_csrf": TOKEN})
+    assert card.CALIBRATION_INFO is None and analyse(alice) == "INVALID_CAPTURE"
+
+
+def test_bad_calibration_photos_are_reported(env):
+    admin, _ = login(env, "admin1")
+    blurred = synth.encode_jpeg(synth.photograph(blur=6))
+    r = admin.post("/admin/calibration/measure", data={"photos": [(io.BytesIO(blurred), "blur.jpg")]},
+                   content_type="multipart/form-data", headers={"X-CSRF-Token": TOKEN})
+    assert r.status_code == 400 and b"too blurry" in r.data
+    assert admin.post("/admin/calibration/measure", data={}, content_type="multipart/form-data",
+                      headers={"X-CSRF-Token": TOKEN}).status_code == 400
+
+
+def test_save_rejects_garbage(env):
+    admin, _ = login(env, "admin1")
+    for bad in ("not json", "{}", json.dumps({n: [999, 0, 0] for n in card.PATCH_ORDER})):
+        assert admin.post("/admin/calibration/save", data={"_csrf": TOKEN, "patches": bad}).status_code == 400
+
+
+def test_other_worker_calibration_is_picked_up(env, tmp_path):
+    import app as app_module
+    printed = printed_card()
+    card.save_calibration({n: list(v) for n, v in printed.items()}, {"created_utc": "t", "calibrated_by": "x", "photos": 1})
+    card._loaded_mtime = "stale"                                      # simulate: file changed by another process
+    app_module._sync_card()
+    assert card.PATCH_TRUE_SRGB["primary_red"] == printed["primary_red"]

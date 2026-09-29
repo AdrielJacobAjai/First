@@ -38,7 +38,8 @@
   {% if current_user %}<a href="{{ url_for('capture') }}">New test</a>
   <a href="{{ url_for('log') }}">Log</a>{% endif %}
   {% if current_user %}
-    {% if current_user.role == 'admin' %}<a href="{{ url_for('admin_users') }}">Officers</a>{% endif %}
+    {% if current_user.role == 'admin' %}<a href="{{ url_for('admin_users') }}">Officers</a>
+      <a href="{{ url_for('calibration') }}">Calibration</a>{% endif %}
     <a href="{{ url_for('about') }}">About</a>
     <a href="{{ url_for('change_password') }}" title="Change password">{{ current_user.username }}</a>
     <form method="post" action="{{ url_for('logout') }}" style="display:inline;margin:0">

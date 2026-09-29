@@ -57,21 +57,24 @@ operator, UTC time, GPS coordinates (plus a map link), distances, both images, t
 the verification result. The PDF is generated with `reportlab` (added to requirements beyond the
 original brief list). Keep the printed record hash with the case file to anchor it externally.
 
-## Calibrating your printed card (do this once per printed card)
+## Calibrating your printed card (once per printed card, admins only)
 
 Printers never reproduce the nominal patch colours (red prints pink, black prints grey), and no
 lighting correction can fix a card whose ink differs from its stored values. Without calibration the
 app rejects such photos as "could not calibrate colours from the card".
 
 1. Print `printable_card.png` (`python make_printable_card.py`) on matte paper.
-2. Photograph the empty card 3+ times in **even daylight** (by a window, no direct sun, no flash, no
-   glare, card flat), or scan it on a flatbed scanner. Don't calibrate under coloured or dim light:
+2. Photograph the **empty** card 3+ times in **even daylight** (by a window, no direct sun, no flash,
+   no glare, card flat), or scan it on a flatbed scanner. Don't calibrate under coloured or dim light:
    that cast becomes the card's "true" colours.
-3. Run `python calibrate_card.py photo1.jpg photo2.jpg photo3.jpg` and restart the app.
+3. Sign in as an admin, open **Calibration**, upload the photos, check the measured colours and press
+   *Save and apply*. It takes effect immediately for all officers (no restart). *Remove calibration*
+   goes back to the nominal colours.
 
-This writes `card_calibration.json` (gitignored), which overrides the nominal values. Later photos are
-corrected back to how the card looks in that daylight. It is an approximation, only as good as the
-calibration lighting; re-run it for every newly printed card.
+The result is stored in `card_calibration.json` (gitignored; override the location with
+`CHROMASEAL_CARD_CAL`) together with who saved it and when. `python calibrate_card.py photos...` does
+the same from the command line. It is an approximation, only as good as the calibration lighting;
+redo it for every newly printed card. Note: records don't yet store which calibration was active.
 
 ## How it works
 

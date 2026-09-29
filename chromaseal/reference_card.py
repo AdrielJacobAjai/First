@@ -36,21 +36,32 @@ PATCH_TRUE_SRGB = {
 
 # --- per-card calibration -----------------------------------------------------
 # A printer never reproduces the nominal values above, so each PRINTED card should be measured
-# once (python calibrate_card.py photo1.jpg photo2.jpg ...). The result is stored in
+# once (admin page "Calibration", or `python calibrate_card.py photos...`). The result is stored in
 # card_calibration.json and overrides the nominal values for every patch it contains.
 import json
 import os
 
+NOMINAL_SRGB = dict(PATCH_TRUE_SRGB)
 CALIBRATION_PATH = os.environ.get(
     "CHROMASEAL_CARD_CAL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "card_calibration.json"))
 CALIBRATION_INFO = None
+_loaded_mtime = "unset"
+
+
+def _mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return None
 
 
 def load_calibration(path=None):
     """Apply a saved card calibration over the nominal values. Returns its metadata or None."""
-    global CALIBRATION_INFO
+    global CALIBRATION_INFO, _loaded_mtime
     path = path or CALIBRATION_PATH
-    if not os.path.exists(path):
+    PATCH_TRUE_SRGB.update(NOMINAL_SRGB)
+    _loaded_mtime = _mtime(path)
+    if _loaded_mtime is None:
         CALIBRATION_INFO = None
         return None
     with open(path) as fh:
@@ -60,6 +71,31 @@ def load_calibration(path=None):
             PATCH_TRUE_SRGB[name] = tuple(int(round(v)) for v in rgb)
     CALIBRATION_INFO = {k: v for k, v in data.items() if k != "patches"}
     return CALIBRATION_INFO
+
+
+def save_calibration(patches, meta, path=None):
+    """Write a calibration file (atomically) and apply it immediately."""
+    path = path or CALIBRATION_PATH
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump({**meta, "patches": patches}, fh, indent=2)
+    os.replace(tmp, path)
+    load_calibration(path)
+
+
+def reset_calibration(path=None):
+    path = path or CALIBRATION_PATH
+    if os.path.exists(path):
+        os.remove(path)
+    load_calibration(path)
+
+
+def sync_calibration():
+    """Reload if the file changed on disk (another worker saved it). True if values were reloaded."""
+    if _mtime(CALIBRATION_PATH) != _loaded_mtime:
+        load_calibration()
+        return True
+    return False
 
 
 load_calibration()
