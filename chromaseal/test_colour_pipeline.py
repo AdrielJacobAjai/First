@@ -127,3 +127,32 @@ def test_calibration_measures_home_print_photos():
     patches, spread = cc.combine(runs)
     assert spread < 3
     assert all(abs(patches[n][i] - card.PATCH_TRUE_SRGB[n][i]) < 4 for n in card.PATCH_ORDER for i in range(3))
+
+
+def _card_with(**overrides):
+    p = dict(card.PATCH_TRUE_SRGB)
+    p.update(overrides)
+    return p
+
+
+def test_clipped_white_patch_is_dropped_from_fit_not_fatal(monkeypatch):
+    monkeypatch.setattr(cp, "has_glare", lambda g: (False, 0.0))     # isolate the patch-clipping rule
+    photo = synth.photograph("positive", "warm_lamp", patches=_card_with(neutral_white=(255, 255, 255)))
+    r = cp.analyze(photo, PROFILE)
+    assert r["outcome"] == "POSITIVE", r["reject_reason"]
+    assert r["dropped_patches"] == ["neutral_white"]
+
+
+def test_two_clipped_patches_is_rejected_as_overexposed(monkeypatch):
+    monkeypatch.setattr(cp, "has_glare", lambda g: (False, 0.0))
+    photo = synth.photograph("positive", "daylight",
+                             patches=_card_with(neutral_white=(255, 255, 255), primary_green=(70, 255, 73)))
+    r = cp.analyze(photo, PROFILE)
+    assert r["outcome"] == "INVALID_CAPTURE" and "overexposed" in r["reject_reason"]
+
+
+def test_clipped_strip_is_still_rejected(monkeypatch):
+    monkeypatch.setattr(cp, "has_glare", lambda g: (False, 0.0))
+    photo = synth.photograph(strip_rgb=(255, 255, 255))
+    r = cp.analyze(photo, PROFILE)
+    assert r["outcome"] == "INVALID_CAPTURE" and "strip overexposed" in r["reject_reason"]

@@ -16,6 +16,7 @@ GATE_WIDTH = 800
 GLARE_BRIGHTNESS = 250
 GLARE_AREA = 0.02
 MAX_CLIPPED_FRACTION = 0.20   # per patch
+MIN_FIT_PATCHES = 5           # unclipped calibration patches needed (of 6); a clipped one is dropped from the fit
 MAX_FIT_RESIDUAL = 5.0        # mean dE2000 on the validated patches
 MIN_CARD_AREA_FRACTION = 0.25  # contour fallback only
 
@@ -401,13 +402,16 @@ def analyze(image_bgr, profile, source="guide"):
     bh, bw = rgb.shape[:2]
 
     boxes = card.patch_boxes(bw, bh)
-    observed, true = [], []
+    observed, true, dropped = [], [], []
     for name in card.VALIDATED:
         med, clipped = sample_patch(rgb, boxes[name])
         if clipped > MAX_CLIPPED_FRACTION:
-            return _invalid("photo overexposed on the reference card, retake")
+            dropped.append(name)     # a clipped patch reads too low: unreliable, so leave it out of the fit
+            continue
         observed.append(srgb_to_linear(med))
         true.append(srgb_to_linear(np.array(card.PATCH_TRUE_SRGB[name]) / 255.0))
+    if len(observed) < MIN_FIT_PATCHES:
+        return _invalid("photo overexposed on the reference card, retake")
 
     try:
         M = fit_correction(observed, true)
@@ -434,4 +438,4 @@ def analyze(image_bgr, profile, source="guide"):
     return {"outcome": outcome, "reject_reason": None,
             "distance_to_target": d_t, "distance_to_blank": d_b,
             "margin": margin, "fit_residual": residual, "detail": why,
-            "corrected_bgr": corrected, "strip_lab": strip_lab.tolist()}
+            "corrected_bgr": corrected, "strip_lab": strip_lab.tolist(), "dropped_patches": dropped}
