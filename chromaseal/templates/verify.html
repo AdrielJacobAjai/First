@@ -12,11 +12,14 @@
   </table>
   <p>Record hash <code>{{ rec.record_hash }}</code><br>Previous hash <code>{{ rec.prev_hash }}</code><br>Image hash <code>{{ rec.image_hash }}</code></p>
   <p><a class="btn secondary" href="{{ url_for('result', record_id=record_id) }}">Back to result</a>
-     <a class="btn secondary" href="{{ url_for('verify', record_id=record_id + 1) }}">Next record</a></p>
+     {% if before %}<a class="btn secondary" href="{{ url_for('verify', record_id=before) }}">&larr; Previous</a>{% endif %}
+     {% if after %}<a class="btn secondary" href="{{ url_for('verify', record_id=after) }}">Next &rarr;</a>{% endif %}
+     <a class="btn" href="{{ url_for('report_pdf', record_id=record_id) }}">PDF report</a></p>
 </div>
 <div class="notice">A hash chain makes tampering <b>detectable</b>, not impossible: someone with full database access could edit a record and recompute every later hash. Anchoring the latest hash externally is a roadmap item, not built here.</div>
-{% if demo_mode %}
+{% if demo_mode and current_user.role == 'admin' %}
 <form method="post" action="{{ url_for('tamper_demo', record_id=record_id) }}" class="card" style="margin-top:1rem">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <b>Demo build only</b> — edits this record's outcome directly in the database.
   <button class="danger" type="submit" style="margin-top:.5rem">Tamper with this record</button>
 </form>

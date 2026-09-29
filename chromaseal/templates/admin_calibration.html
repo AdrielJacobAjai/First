@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0">Card calibration</h2>
+  <p>Calibrate the card at the start of every session: photograph it empty and save the measured colours.
+     Every test is then corrected against them. A printed card never matches its nominal colours.</p>
+  {% if info %}<p class="ok">Calibrated {{ info.created_utc }} by {{ info.calibrated_by }} ({{ info.photos }} photo{{ 's' if info.photos != 1 }}).</p>
+  {% else %}<p class="bad">Not calibrated: nominal colours in use. A printed card will usually be rejected.</p>{% endif %}
+  <div class="notice"><b>Take the photos in even daylight</b> — by a window, no direct sun, no flash, no glare, card flat and
+    empty (no strip), whole black border in frame. Take 3 or more at slightly different angles. Indoor or coloured light
+    becomes part of the card's "true" colours and makes every later result worse.</div>
+  {% if error %}<div class="notice" role="alert" style="border-color:#b3261e;margin-top:.6rem">{{ error }}</div>{% endif %}
+  <form id="measureForm" method="post" action="{{ url_for('calibration_measure') }}" enctype="multipart/form-data">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label for="photos">Photos of the empty card (up to 8)</label>
+    <input id="photos" name="photos" type="file" accept="image/*" multiple required>
+    <button id="measureBtn" type="submit" style="margin-top:.8rem">Measure card</button>
+    <p id="measureStatus" role="status" style="font-weight:600"></p>
+  </form>
+</div>
+
+{% if notes %}<div class="card"><b>Photos</b><ul>{% for name, problem in notes %}
+  <li>{{ name }}: {% if problem %}<span class="bad">{{ problem }}</span>{% else %}<span class="ok">ok</span>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+
+{% if preview %}
+<div class="card">
+  <h3 style="margin-top:0">Measured colours ({{ preview.photos }} photo{{ 's' if preview.photos != 1 }})</h3>
+  {% if preview.inconsistent %}<div class="notice" style="border-color:#b3261e">The photos disagree by up to {{ '%.1f'|format(preview.spread) }} levels: the lighting was not consistent. Retake them before saving.</div>{% endif %}
+  {% if preview.few %}<div class="notice">Tip: 3 or more photos give a steadier result.</div>{% endif %}
+  <div class="table-wrap"><table>
+    <tr><th>#</th><th>Patch</th><th>Nominal</th><th>Measured (new)</th></tr>
+    {% for r in rows %}{% set m = preview.patches[r.name] %}
+    <tr><td>{{ r.n }}</td><td>{{ r.name.replace('_', ' ') }}</td>
+      <td><span style="display:inline-block;width:1.6rem;height:1rem;vertical-align:middle;border:1px solid #888;background:rgb{{ r.nominal }}"></span> {{ r.nominal|join(', ') }}</td>
+      <td><span style="display:inline-block;width:1.6rem;height:1rem;vertical-align:middle;border:1px solid #888;background:rgb({{ m[0]|round|int }},{{ m[1]|round|int }},{{ m[2]|round|int }})"></span> {{ m|map('round')|map('int')|join(', ') }}</td></tr>
+    {% endfor %}
+  </table></div>
+  <form method="post" action="{{ url_for('calibration_save') }}" style="margin-top:1rem">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="patches" value="{{ preview.json }}">
+    <input type="hidden" name="photos" value="{{ preview.photos }}">
+    <input type="hidden" name="spread" value="{{ preview.spread }}">
+    <button type="submit">Save and apply calibration</button>
+  </form>
+</div>
+{% endif %}
+
+{% if info and current_user.role == 'admin' %}
+<form method="post" action="{{ url_for('calibration_reset') }}" class="card">
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <button type="submit" class="secondary" onclick="return confirm('Remove the calibration and go back to nominal colours?')">Remove calibration</button>
+</form>
+{% endif %}
+<script src="{{ url_for('static', filename='calibration.js') }}"></script>
+{% endblock %}

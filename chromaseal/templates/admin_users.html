@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0">Officer accounts</h2>
+  <div class="table-wrap"><table>
+    <tr><th>Officer ID</th><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr>
+    {% for u in users %}
+    <tr><td>{{ u.username }}</td><td>{{ u.display_name }}</td><td>{{ u.role }}</td>
+      <td>{{ 'active' if u.active else 'DEACTIVATED' }}{{ ' · must change password' if u.must_change }}</td>
+      <td>
+        <form method="post" action="{{ url_for('admin_user_action', user_id=u.id, action='deactivate' if u.active else 'activate') }}" style="display:inline">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <button type="submit" class="secondary" style="width:auto;padding:.2rem .6rem">{{ 'Deactivate' if u.active else 'Reactivate' }}</button></form>
+        <form method="post" action="{{ url_for('admin_user_action', user_id=u.id, action='reset') }}" style="display:inline">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input name="password" type="password" placeholder="new temp password" required style="width:11rem;padding:.2rem .4rem">
+          <button type="submit" class="secondary" style="width:auto;padding:.2rem .6rem">Reset</button></form>
+      </td></tr>
+    {% endfor %}
+  </table></div>
+</div>
+<form method="post" class="card">
+  <h3 style="margin-top:0">Add officer</h3>
+  {% if error %}<div class="notice" role="alert" style="border-color:#b3261e">{{ error }}</div>{% endif %}
+  <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+  <div class="row">
+    <div><label>Officer ID (badge no.)</label><input name="username" required maxlength="32"></div>
+    <div><label>Full name</label><input name="display_name" required maxlength="80"></div>
+    <div><label>Role</label><select name="role"><option>officer</option><option>admin</option></select></div>
+    <div><label>Temporary password</label><input name="password" type="password" required autocomplete="new-password"></div>
+  </div>
+  <button type="submit" style="margin-top:1rem">Create account</button>
+</form>
+<div class="card table-wrap"><h3 style="margin-top:0">Recent sign-in activity</h3><table>
+  <tr><th>Time (UTC)</th><th>Officer ID</th><th>Result</th><th>Note</th><th>IP</th></tr>
+  {% for e in events %}<tr><td>{{ e.ts }}</td><td>{{ e.username }}</td>
+    <td class="{{ 'ok' if e.success else 'bad' }}">{{ 'success' if e.success else 'FAILED' }}</td><td>{{ e.note }}</td><td>{{ e.ip }}</td></tr>
+  {% else %}<tr><td colspan="5">No activity yet.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

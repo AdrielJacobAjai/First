@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <form class="card row" method="get" style="align-items:end">
-  <div><label>Operator</label><input name="operator" value="{{ filters.operator }}"></div>
+  {% if is_admin %}<div><label>Operator</label><input name="operator" value="{{ filters.operator }}"></div>{% endif %}
   <div><label>Outcome</label><select name="outcome"><option value="">All</option>
     {% for o in outcomes %}<option value="{{ o }}" {{ 'selected' if filters.outcome == o }}>{{ o.replace('_',' ') }}</option>{% endfor %}</select></div>
   <div><label>From</label><input type="date" name="date_from" value="{{ filters.date_from }}"></div>
@@ -9,12 +9,13 @@
   <div><button type="submit">Filter</button></div>
 </form>
 <div class="card table-wrap"><table>
-  <tr><th>#</th><th>Time (UTC)</th><th>Test</th><th>Operator</th><th>Outcome</th><th>Seal</th><th>Hash</th></tr>
+  <tr><th>#</th><th>Time (UTC)</th><th>Test</th><th>Operator</th><th>Outcome</th><th>Seal</th><th>Hash</th><th>PDF</th></tr>
   {% for r in rows %}
   <tr><td><a href="{{ url_for('result', record_id=r.id) }}">{{ r.id }}</a></td><td>{{ r.timestamp_utc }}</td><td>{{ r.test_id }}</td>
       <td>{{ r.operator_id }}</td><td><span class="badge {{ r.outcome }}">{{ r.outcome.replace('_',' ') }}</span></td>
       <td><a href="{{ url_for('verify', record_id=r.id) }}" class="{{ 'ok' if status.get(r.id) else 'bad' }}">{{ 'OK' if status.get(r.id) else 'FAILED' }}</a></td>
-      <td><code>{{ r.record_hash[:16] }}…</code></td></tr>
-  {% else %}<tr><td colspan="7">No records.</td></tr>{% endfor %}
+      <td><code>{{ r.record_hash[:16] }}…</code></td>
+      <td><a href="{{ url_for('report_pdf', record_id=r.id) }}">PDF</a></td></tr>
+  {% else %}<tr><td colspan="8">No records.</td></tr>{% endfor %}
 </table></div>
 {% endblock %}

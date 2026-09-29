@@ -10,6 +10,31 @@ hash-chained log.
 
 **No real drugs or reagents, ever.** Testing and demos use printed mock swatches only.
 
+## Accounts and login
+
+Every page needs a signed-in officer. The operator ID on each record (and in the sealed hash) is
+the logged-in username; it cannot be typed. Roles: **officer** (runs tests, sees only their own
+records, logs and PDFs) and **admin** (sees everything, manages accounts at `/admin/users`, sees
+sign-in activity, and is the only role that can use the tamper demo).
+
+Create the first accounts on the server (there is deliberately no default password):
+
+```
+flask --app app create-user admin --role admin          # prompts for a password
+flask --app app create-user 4521 --name "A. Kumar"      # an officer
+flask --app app seed-demo                               # demo only: admin + officer1, random passwords printed once
+```
+
+Security behaviour: passwords stored hashed (PBKDF2-SHA256), min 10 chars; 5 failed sign-ins lock
+that ID for 10 minutes; sessions expire after 30 minutes idle; CSRF token on every POST; new
+accounts and admin resets force a password change at next sign-in; deactivating an account ends its
+live session immediately. The session secret is read from `CHROMASEAL_SECRET`, or generated into
+`instance/secret_key` (gitignored). Set `CHROMASEAL_HTTPS=1` when served over HTTPS so the cookie is
+marked Secure. Records created before accounts existed keep their old free-text operator ID and are
+visible to admins only.
+
+Not covered: two-factor sign-in, password-reset by email, per-record edit history beyond the hash chain.
+
 ## Run
 
 ```
@@ -19,9 +44,43 @@ CHROMASEAL_DEMO=1 flask --app app run --host 0.0.0.0   # phone on same network: 
 pytest
 ```
 
-`CHROMASEAL_DEMO=1` enables the tamper-demo button; leave it unset otherwise. The live camera
+`CHROMASEAL_DEMO=1` enables the tamper-demo button (admins only); leave it unset otherwise. The live camera
 guide and GPS need HTTPS (or localhost); without them use the photo picker, and GPS is stored as
 `unavailable`.
+
+## Records, log and PDF reports
+
+Every test (including rejected photos) is stored in `chromaseal.db` (SQLite) with its photo in
+`captures/`. Browse and filter them at `/log` (operator, outcome, date range). Each record has a
+verify page (`/verify/<id>`, with Previous/Next) and a PDF report (`/report/<id>.pdf`) containing
+operator, UTC time, GPS coordinates (plus a map link), distances, both images, the three hashes and
+the verification result. The PDF is generated with `reportlab` (added to requirements beyond the
+original brief list). Keep the printed record hash with the case file to anchor it externally.
+
+## Calibrating your printed card
+
+Printers never reproduce the nominal patch colours (red prints pink, black prints grey), and no
+lighting correction can fix a card whose ink differs from its stored values. Without calibration the
+app rejects such photos as "could not calibrate colours from the card".
+
+**Every sign-in must calibrate the card before running tests** (officers and admins alike; the New
+test page redirects to the Calibration page until it is done). Set `CHROMASEAL_CAL_EACH_LOGIN=0` to
+turn this requirement off.
+
+1. Print `printable_card.png` (`python make_printable_card.py`) on matte paper.
+2. Photograph the **empty** card 3+ times in **even daylight** (by a window, no direct sun, no flash,
+   no glare, card flat), or scan it on a flatbed scanner. Don't calibrate under coloured or dim light:
+   that cast becomes the card's "true" colours.
+3. Open **Calibration**, upload the photos, check the measured colours and press *Save and apply*.
+   You are then taken to the test page. Only admins can *Remove calibration*.
+
+The result is stored in `card_calibration.json` (gitignored; override the location with
+`CHROMASEAL_CARD_CAL`) together with who saved it and when. `python calibrate_card.py photos...` does
+the same from the command line. It is an approximation, only as good as the calibration lighting.
+
+Caveats: the calibration is **shared by everyone using the app**, so if two officers are signed in,
+whoever calibrates last changes the colours for both. Records don't yet store which calibration was
+active when they were made.
 
 ## How it works
 

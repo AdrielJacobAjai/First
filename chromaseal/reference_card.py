@@ -34,10 +34,78 @@ PATCH_TRUE_SRGB = {
     "reagent_positive": (40, 22, 52),         # placeholder estimate
 }
 
+# --- per-card calibration -----------------------------------------------------
+# A printer never reproduces the nominal values above, so each PRINTED card should be measured
+# once (admin page "Calibration", or `python calibrate_card.py photos...`). The result is stored in
+# card_calibration.json and overrides the nominal values for every patch it contains.
+import json
+import os
+
+NOMINAL_SRGB = dict(PATCH_TRUE_SRGB)
+CALIBRATION_PATH = os.environ.get(
+    "CHROMASEAL_CARD_CAL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "card_calibration.json"))
+CALIBRATION_INFO = None
+_loaded_mtime = "unset"
+
+
+def _mtime(path):
+    try:
+        return os.path.getmtime(path)
+    except OSError:
+        return None
+
+
+def load_calibration(path=None):
+    """Apply a saved card calibration over the nominal values. Returns its metadata or None."""
+    global CALIBRATION_INFO, _loaded_mtime
+    path = path or CALIBRATION_PATH
+    PATCH_TRUE_SRGB.update(NOMINAL_SRGB)
+    _loaded_mtime = _mtime(path)
+    if _loaded_mtime is None:
+        CALIBRATION_INFO = None
+        return None
+    with open(path) as fh:
+        data = json.load(fh)
+    for name, rgb in data["patches"].items():
+        if name in PATCH_TRUE_SRGB:
+            PATCH_TRUE_SRGB[name] = tuple(int(round(v)) for v in rgb)
+    CALIBRATION_INFO = {k: v for k, v in data.items() if k != "patches"}
+    return CALIBRATION_INFO
+
+
+def save_calibration(patches, meta, path=None):
+    """Write a calibration file (atomically) and apply it immediately."""
+    path = path or CALIBRATION_PATH
+    tmp = path + ".tmp"
+    with open(tmp, "w") as fh:
+        json.dump({**meta, "patches": patches}, fh, indent=2)
+    os.replace(tmp, path)
+    load_calibration(path)
+
+
+def reset_calibration(path=None):
+    path = path or CALIBRATION_PATH
+    if os.path.exists(path):
+        os.remove(path)
+    load_calibration(path)
+
+
+def sync_calibration():
+    """Reload if the file changed on disk (another worker saved it). True if values were reloaded."""
+    if _mtime(CALIBRATION_PATH) != _loaded_mtime:
+        load_calibration()
+        return True
+    return False
+
+
+load_calibration()
+
 # Layout, fractions of the board (x, y, w, h)
 _ROW_X0, _ROW_X1 = 0.06, 0.94
 _ROW_Y, _ROW_H = 0.10, 0.34
 _GAP = 0.008
+# Black border thickness that is visible around the paper, as a fraction of the board height
+BORDER_INSET_H = 0.035
 STRIP_WINDOW = (0.30, 0.56, 0.40, 0.32)
 
 
