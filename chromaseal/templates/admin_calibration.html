@@ -10,11 +10,12 @@
     empty (no strip), whole black border in frame. Take 3 or more at slightly different angles. Indoor or coloured light
     becomes part of the card's "true" colours and makes every later result worse.</div>
   {% if error %}<div class="notice" role="alert" style="border-color:#b3261e;margin-top:.6rem">{{ error }}</div>{% endif %}
-  <form method="post" action="{{ url_for('calibration_measure') }}" enctype="multipart/form-data">
+  <form id="measureForm" method="post" action="{{ url_for('calibration_measure') }}" enctype="multipart/form-data">
     <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
     <label for="photos">Photos of the empty card (up to 8)</label>
     <input id="photos" name="photos" type="file" accept="image/*" multiple required>
-    <button type="submit" style="margin-top:.8rem">Measure card</button>
+    <button id="measureBtn" type="submit" style="margin-top:.8rem">Measure card</button>
+    <p id="measureStatus" role="status" style="font-weight:600"></p>
   </form>
 </div>
 
@@ -50,4 +51,5 @@
   <button type="submit" class="secondary" onclick="return confirm('Remove the calibration and go back to nominal colours?')">Remove calibration</button>
 </form>
 {% endif %}
+<script src="{{ url_for('static', filename='calibration.js') }}"></script>
 {% endblock %}
