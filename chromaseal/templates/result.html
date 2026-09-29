@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <p style="margin:0">Test <b>{{ f.test_id }}</b> · operator {{ f.operator_id }} · {{ f.timestamp_utc }}</p>
+  <h2 style="margin:.6rem 0"><span class="badge {{ f.outcome }}">{{ f.outcome.replace('_',' ') }}</span></h2>
+  {% if f.outcome == 'INVALID_CAPTURE' %}
+    <p><b>{{ f.reject_reason|capitalize }}.</b> No classification was attempted on this photo.</p>
+    <a class="btn" href="{{ url_for('capture') }}">Retake</a>
+  {% else %}
+    <div class="table-wrap"><table>
+      <tr><th>Distance to target colour (ΔE2000)</th><td>{{ '%.1f'|format(f.distance_to_target) }}</td></tr>
+      <tr><th>Distance to unreacted colour (ΔE2000)</th><td>{{ '%.1f'|format(f.distance_to_blank) }}</td></tr>
+      <tr><th>Margin</th><td>{{ '%.1f'|format(f.margin) }}</td></tr>
+      <tr><th>Calibration residual (ΔE2000)</th><td>{{ '%.2f'|format(f.fit_residual) }}</td></tr>
+    </table></div>
+    {% if f.outcome == 'INCONCLUSIVE' %}<p>The colour is not close enough to either reference to call. Retest, and send for laboratory analysis.</p>{% endif %}
+  {% endif %}
+</div>
+<div class="notice"><b>Presumptive result only.</b> This tool removes human-reading and lighting error. It cannot fix chemical cross-reactivity: some legal substances give the same colour as illegal ones. Confirm in a laboratory.</div>
+<div class="card row" style="margin-top:1rem">
+  <div><b>Original photo</b><br><img src="{{ url_for('image', record_id=record_id, kind='raw') }}" alt="original"></div>
+  {% if corrected %}<div><b>Lighting-corrected</b><br><img src="{{ url_for('image', record_id=record_id, kind='corrected') }}" alt="corrected"></div>{% endif %}
+</div>
+<p><a class="btn secondary" href="{{ url_for('verify', record_id=record_id) }}">Verify seal</a>
+   <a class="btn" href="{{ url_for('capture') }}">Next test</a></p>
+<p>GPS: {% if f.gps_status == 'available' %}{{ f.gps_lat }}, {{ f.gps_lon }}{% else %}unavailable{% endif %}</p>
+{% endblock %}
