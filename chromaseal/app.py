@@ -7,7 +7,8 @@ from datetime import datetime, timezone
 
 import cv2
 import numpy as np
-from flask import Flask, Response, abort, flash, g, jsonify, redirect, render_template, request, send_file, url_for
+from flask import (Flask, Response, abort, flash, g, jsonify, redirect, render_template, request, send_file,
+                   session, url_for)
 
 import auth
 import calibrate_card
@@ -209,14 +210,12 @@ def _calibration_page(**extra):
                            **extra)
 
 
-@app.get("/admin/calibration")
-@auth.admin_required
+@app.get("/calibration")
 def calibration():
     return _calibration_page(preview=None)
 
 
-@app.post("/admin/calibration/measure")
-@auth.admin_required
+@app.post("/calibration/measure")
 def calibration_measure():
     files = [f for f in request.files.getlist("photos") if f and f.filename][:8]
     if not files:
@@ -242,8 +241,7 @@ def calibration_measure():
     return _calibration_page(preview=preview, notes=notes)
 
 
-@app.post("/admin/calibration/save")
-@auth.admin_required
+@app.post("/calibration/save")
 def calibration_save():
     try:
         patches = json.loads(request.form.get("patches", ""))
@@ -255,11 +253,12 @@ def calibration_save():
         abort(400)
     reference_card.save_calibration(patches, calibrate_card.make_meta(n, spread, g.user["username"]))
     KIT_PROFILES.update(kit_profiles.build_profiles())
-    flash("Card calibration saved and applied to all new tests.")
-    return redirect(url_for("calibration"))
+    session["cal_ok"] = True                      # this sign-in has now calibrated the card
+    flash("Card calibrated. You can start testing.")
+    return redirect(url_for("capture"))
 
 
-@app.post("/admin/calibration/reset")
+@app.post("/calibration/reset")
 @auth.admin_required
 def calibration_reset():
     reference_card.reset_calibration()

@@ -2,8 +2,8 @@
 {% block content %}
 <div class="card">
   <h2 style="margin-top:0">Card calibration</h2>
-  <p>A printed card never matches its nominal colours, so measure it once. Every test is then corrected
-     against the colours you save here.</p>
+  <p>Calibrate the card at the start of every session: photograph it empty and save the measured colours.
+     Every test is then corrected against them. A printed card never matches its nominal colours.</p>
   {% if info %}<p class="ok">Calibrated {{ info.created_utc }} by {{ info.calibrated_by }} ({{ info.photos }} photo{{ 's' if info.photos != 1 }}).</p>
   {% else %}<p class="bad">Not calibrated: nominal colours in use. A printed card will usually be rejected.</p>{% endif %}
   <div class="notice"><b>Take the photos in even daylight</b> — by a window, no direct sun, no flash, no glare, card flat and
@@ -45,7 +45,7 @@
 </div>
 {% endif %}
 
-{% if info %}
+{% if info and current_user.role == 'admin' %}
 <form method="post" action="{{ url_for('calibration_reset') }}" class="card">
   <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
   <button type="submit" class="secondary" onclick="return confirm('Remove the calibration and go back to nominal colours?')">Remove calibration</button>

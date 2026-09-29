@@ -1,6 +1,6 @@
 """Measure a PRINTED reference card and save its real patch colours.
 
-Web: an admin does this at /admin/calibration. Command line:
+Web: an admin does this at /calibration. Command line:
     python calibrate_card.py photo1.jpg [photo2.jpg ...] [--out card_calibration.json]
 
 Photograph the finished card (no strip needed) in good, even daylight -- near a window, no direct

@@ -23,6 +23,10 @@ MAX_FAILURES = 5
 LOCKOUT_MINUTES = 10
 SESSION_MINUTES = 30
 PUBLIC_ENDPOINTS = {"login", "static", "favicon"}
+# Card calibration is required once per sign-in before running tests (any signed-in user may do it).
+# Set CHROMASEAL_CAL_EACH_LOGIN=0 to turn the requirement off.
+CAL_EACH_LOGIN = os.environ.get("CHROMASEAL_CAL_EACH_LOGIN", "1") != "0"
+NEEDS_CALIBRATION = {"capture", "analyze_route"}
 _DUMMY_HASH = generate_password_hash("dummy-password-for-timing", method="pbkdf2:sha256")
 
 
@@ -118,6 +122,11 @@ def register(app):
             return redirect(url_for("login", next=request.full_path.rstrip("?")))
         if g.user["must_change"] and request.endpoint not in ("change_password", "logout"):
             return redirect(url_for("change_password"))
+        if request.endpoint in NEEDS_CALIBRATION and not session.get("cal_ok"):
+            if request.endpoint == "analyze_route":
+                return jsonify(error="Calibrate the reference card first (Calibration page)."), 409
+            flash("Please calibrate the reference card before testing.")
+            return redirect(url_for("calibration"))
         return None
 
     @app.after_request
@@ -150,6 +159,7 @@ def register(app):
                     session.clear()                      # new session on login (no fixation)
                     session.permanent = True
                     session["uid"] = user["id"]
+                    session["cal_ok"] = not CAL_EACH_LOGIN        # must calibrate the card once per sign-in
                     _csrf_token()
                     return redirect(_safe_next(request.args.get("next")) or url_for("capture"))
                 db.log_login_event(username, False, ip, "inactive account" if user and ok else "bad credentials")

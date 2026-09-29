@@ -39,11 +39,13 @@ def env(tmp_path, monkeypatch):
     return app_module
 
 
-def login(app_module, username, password=PW):
+def login(app_module, username, password=PW, calibrated=True):
     c = app_module.app.test_client()
     with c.session_transaction() as s:
         s["csrf"] = TOKEN
     r = c.post("/login", data={"username": username, "password": password, "_csrf": TOKEN})
     with c.session_transaction() as s:      # login rotates the session; pin a known token for tests
         s["csrf"] = TOKEN
+        if calibrated and "uid" in s:       # most tests are not about the calibrate-at-login rule
+            s["cal_ok"] = True
     return c, r

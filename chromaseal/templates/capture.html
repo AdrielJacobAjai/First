@@ -14,9 +14,7 @@
   </div>
   <div id="preview" hidden style="margin-top:.6rem"><b>Captured photo</b> — check the whole card is visible and sharp.<br><img id="previewImg" alt="captured photo"></div>
   <p id="msg" role="status" style="font-weight:600"></p>
-  {% if card_cal %}<p style="font-size:.85rem;color:#1e7a3c;margin:.4rem 0">Card calibrated {{ card_cal.created_utc }}.</p>
-  {% elif current_user.role == 'admin' %}<p class="notice" style="margin:.4rem 0">This card is <b>not calibrated</b>, so a printed card will usually be rejected. <a href="{{ url_for('calibration') }}">Calibrate it now</a>.</p>
-  {% else %}<p class="notice" style="margin:.4rem 0">The reference card has not been calibrated yet. Ask an administrator to calibrate it before testing.</p>{% endif %}
+  {% if card_cal %}<p style="font-size:.85rem;color:#1e7a3c;margin:.4rem 0">Card calibrated {{ card_cal.created_utc }}{% if card_cal.calibrated_by %} by {{ card_cal.calibrated_by }}{% endif %}.</p>{% endif %}
   <p id="hint" class="notice" style="margin-top:.6rem">Hold the phone <b>portrait</b>. Fit the black-bordered card, with the strip in its slot, inside the yellow frame.</p>
   <div class="row" style="margin-top:.6rem">
     <button id="snap" type="button" hidden>Take photo</button>
