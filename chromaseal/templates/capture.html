@@ -1,8 +1,14 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+  #snap.highlight { background:#1e7a3c; font-size:1.15rem; font-weight:700; padding:.95rem 1rem;
+                    box-shadow:0 0 0 3px #fff, 0 0 0 6px #1e7a3c; animation:snapPulse 1.4s ease-in-out infinite; }
+  @keyframes snapPulse { 50% { box-shadow:0 0 0 3px #fff, 0 0 0 11px #1e7a3c55; } }
+  @media (prefers-reduced-motion: reduce) { #snap.highlight { animation:none; } }
+</style>
 <div class="notice">Results are <b>presumptive only</b>. Testing here uses printed mock swatches — never real drugs or reagents.</div>
 <div class="card">
-  <div id="stage" hidden style="position:relative">
+  <div id="stage" hidden style="position:relative;overflow:hidden;border-radius:8px">
     <video id="video" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000"></video>
     <div id="guide" style="position:absolute;border:3px dashed #ffe066;box-shadow:0 0 0 9999px rgba(0,0,0,.45);pointer-events:none"></div>
   </div>
@@ -11,7 +17,7 @@
   {% if card_cal %}<p style="font-size:.85rem;color:#1e7a3c;margin:.4rem 0">Card calibrated {{ card_cal.created_utc }}.</p>
   {% elif current_user.role == 'admin' %}<p class="notice" style="margin:.4rem 0">This card is <b>not calibrated</b>, so a printed card will usually be rejected. <a href="{{ url_for('calibration') }}">Calibrate it now</a>.</p>
   {% else %}<p class="notice" style="margin:.4rem 0">The reference card has not been calibrated yet. Ask an administrator to calibrate it before testing.</p>{% endif %}
-  <p id="hint" class="notice" style="margin-top:.6rem">Hold the phone <b>landscape</b>. Fit the black-bordered card, with the strip in its slot, inside the yellow frame.</p>
+  <p id="hint" class="notice" style="margin-top:.6rem">Hold the phone <b>portrait</b>. Fit the black-bordered card, with the strip in its slot, inside the yellow frame.</p>
   <div class="row" style="margin-top:.6rem">
     <button id="snap" type="button" hidden>Take photo</button>
     <button id="cam" type="button" class="secondary">Use live camera guide</button>

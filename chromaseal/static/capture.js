@@ -43,6 +43,8 @@
     v.srcObject = stream;
     v.addEventListener("loadedmetadata", layoutGuide);
     $("stage").hidden = false; $("snap").hidden = false; $("cam").hidden = true;
+    $("snap").classList.add("highlight");
+    $("snap").scrollIntoView({ block: "nearest", behavior: "smooth" });
     $("preview").hidden = true; msg.textContent = "Fit the card inside the yellow frame, then tap Take photo.";
   });
 
@@ -59,6 +61,7 @@
       msg.textContent = "Photo captured. Press Analyse.";
       go.focus();
       stream.getTracks().forEach((t) => t.stop());
+      $("snap").classList.remove("highlight");
       $("stage").hidden = true; $("snap").hidden = true; $("cam").hidden = false;
     }, "image/jpeg", 0.95);
   });
