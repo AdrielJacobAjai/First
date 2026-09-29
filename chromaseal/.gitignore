@@ -1,0 +1,6 @@
+captures/*
+!captures/.gitkeep
+chromaseal.db
+demo_images/
+__pycache__/
+.pytest_cache/

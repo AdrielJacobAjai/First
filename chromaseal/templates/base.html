@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}ChromaSeal{% endblock %}</title>
+<style>
+  :root { --bg:#f5f6f8; --fg:#1b1f24; --card:#fff; --line:#d8dce2; --accent:#3b3f9e;
+          --pos:#b3261e; --neg:#1e7a3c; --inc:#a86a00; --inv:#555; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.45 system-ui, sans-serif; background:var(--bg); color:var(--fg); }
+  header { background:var(--accent); color:#fff; padding:.7rem 1rem; display:flex; gap:1.2rem; align-items:baseline; flex-wrap:wrap; }
+  header a { color:#fff; text-decoration:none; opacity:.85 } header a:hover { opacity:1 }
+  header strong { font-size:1.2rem; margin-right:auto; opacity:1 }
+  main { max-width:760px; margin:0 auto; padding:1rem; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:1rem; margin-bottom:1rem; }
+  .notice { background:#fff7e0; border:1px solid #e6c766; border-radius:8px; padding:.6rem .8rem; font-size:.92rem; }
+  footer { max-width:760px; margin:0 auto; padding:0 1rem 2rem; font-size:.85rem; color:#555; }
+  label { display:block; margin:.6rem 0 .2rem; font-weight:600; font-size:.9rem; }
+  input, select, button { font:inherit; padding:.55rem .7rem; border-radius:8px; border:1px solid var(--line); width:100%; }
+  button, .btn { background:var(--accent); color:#fff; border:0; cursor:pointer; text-decoration:none; display:inline-block; text-align:center; padding:.6rem 1rem; border-radius:8px; }
+  button.secondary, .btn.secondary { background:#e8eaf3; color:var(--accent); }
+  button.danger { background:#b3261e; }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; }
+  th, td { padding:.4rem .5rem; border-bottom:1px solid var(--line); text-align:left; }
+  .table-wrap { overflow-x:auto; }
+  .badge { display:inline-block; padding:.15rem .6rem; border-radius:99px; color:#fff; font-weight:700; font-size:.85rem; }
+  .POSITIVE{background:var(--pos)} .NEGATIVE{background:var(--neg)} .INCONCLUSIVE{background:var(--inc)} .INVALID_CAPTURE{background:var(--inv)}
+  .ok { color:var(--neg); font-weight:700 } .bad { color:var(--pos); font-weight:700 }
+  code { font-size:.78rem; word-break:break-all; }
+  .row { display:flex; gap:.8rem; flex-wrap:wrap } .row > * { flex:1 1 140px }
+  img { max-width:100%; border-radius:6px; }
+</style>
+</head>
+<body>
+<header><strong>ChromaSeal</strong>
+  <a href="{{ url_for('capture') }}">New test</a>
+  <a href="{{ url_for('log') }}">Log</a>
+  <a href="{{ url_for('about') }}">About</a></header>
+<main>{% block content %}{% endblock %}</main>
+<footer>Presumptive result only. Not a substitute for laboratory confirmation.</footer>
+</body>
+</html>

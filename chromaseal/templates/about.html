@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin-top:0">About this tool</h2>
+  <p><b>Presumptive only.</b> ChromaSeal removes human-reading and lighting error from colorimetric field tests. It does not fix chemical cross-reactivity, and it is not a laboratory replacement.</p>
+  <ul>
+    <li><b>Reference values are estimates.</b> Neutral and primary card patches use nominal values; the three reagent patches are printed approximations from published colour descriptions, refined by averaging daylight photos. Not spectrophotometer-grade.</li>
+    <li><b>Metamerism.</b> Printed ink can match the real reagent colour under one light and drift under another.</li>
+    <li><b>Linear correction.</b> Accuracy degrades in extreme lighting; photos with a poor calibration fit are rejected, not guessed at.</li>
+    <li><b>Tamper evidence.</b> Records are hash-chained (SHA-256). This makes edits detectable, not impossible.</li>
+    <li>This prototype is used only with printed mock swatches. Never use real drugs or reagents.</li>
+  </ul>
+</div>
+{% endblock %}
