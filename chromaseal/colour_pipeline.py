@@ -139,26 +139,33 @@ def find_card(gray_image):
     return cv2.boundingRect(card_contour)  # (x, y, w, h)
 
 
+def _aspect_ok(w, h):
+    return abs((w / h) / card.BOARD_ASPECT - 1) <= 0.25
+
+
 def locate_board(image_bgr, source):
     """Return the board crop (BGR) or None.
 
     source='guide': the client already cropped to the on-screen alignment
-    frame, so the whole image is the board. source='file': fall back to
-    contour detection of the thick black border.
+    frame, so the whole image is the board. source='file': (1) look for the
+    thick black border as the largest dark blob; (2) if that fails and the
+    image itself has the card's proportions, assume it was already cropped to
+    the card; (3) otherwise give up.
     """
     if source == "guide":
         return image_bgr
-    gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
-    rect = find_card(cv2.GaussianBlur(gray, (5, 5), 0))
-    if rect is None:
-        return None
-    x, y, w, h = rect
-    ih, iw = gray.shape
-    if w * h < MIN_CARD_AREA_FRACTION * iw * ih:
-        return None
-    if abs((w / h) / card.BOARD_ASPECT - 1) > 0.25:
-        return None
-    return image_bgr[y:y + h, x:x + w]
+    ih, iw = image_bgr.shape[:2]
+    gray = cv2.GaussianBlur(cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY), (5, 5), 0)
+    dark = (gray < 35).astype(np.uint8)
+    n, _, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+    if n > 1:
+        k = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        x, y, w, h = (int(v) for v in stats[k, :4])
+        if w * h >= MIN_CARD_AREA_FRACTION * iw * ih and _aspect_ok(w, h):
+            return image_bgr[y:y + h, x:x + w]
+    if _aspect_ok(iw, ih):
+        return image_bgr
+    return None
 
 
 # --- full pipeline ----------------------------------------------------------

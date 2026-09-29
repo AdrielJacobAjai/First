@@ -81,3 +81,10 @@ def test_missing_card_is_invalid():
 def test_contour_fallback_finds_board_on_table():
     r = cp.analyze(synth.photograph("positive", "warm_lamp", margin=120), PROFILE, source="file")
     assert r["outcome"] == "POSITIVE"
+
+
+def test_file_already_cropped_to_card_without_full_border():
+    import cv2
+    img = synth.photograph("positive", "shade")
+    cropped = img[:-30, 30:]          # border partly cut off on two sides
+    assert cp.analyze(cropped, PROFILE, source="file")["outcome"] == "POSITIVE"
