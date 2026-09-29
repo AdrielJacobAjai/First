@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <form class="card row" method="get" style="align-items:end">
-  <div><label>Operator</label><input name="operator" value="{{ filters.operator }}"></div>
+  {% if is_admin %}<div><label>Operator</label><input name="operator" value="{{ filters.operator }}"></div>{% endif %}
   <div><label>Outcome</label><select name="outcome"><option value="">All</option>
     {% for o in outcomes %}<option value="{{ o }}" {{ 'selected' if filters.outcome == o }}>{{ o.replace('_',' ') }}</option>{% endfor %}</select></div>
   <div><label>From</label><input type="date" name="date_from" value="{{ filters.date_from }}"></div>

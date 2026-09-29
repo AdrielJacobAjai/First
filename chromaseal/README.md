@@ -10,6 +10,31 @@ hash-chained log.
 
 **No real drugs or reagents, ever.** Testing and demos use printed mock swatches only.
 
+## Accounts and login
+
+Every page needs a signed-in officer. The operator ID on each record (and in the sealed hash) is
+the logged-in username; it cannot be typed. Roles: **officer** (runs tests, sees only their own
+records, logs and PDFs) and **admin** (sees everything, manages accounts at `/admin/users`, sees
+sign-in activity, and is the only role that can use the tamper demo).
+
+Create the first accounts on the server (there is deliberately no default password):
+
+```
+flask --app app create-user admin --role admin          # prompts for a password
+flask --app app create-user 4521 --name "A. Kumar"      # an officer
+flask --app app seed-demo                               # demo only: admin + officer1, random passwords printed once
+```
+
+Security behaviour: passwords stored hashed (PBKDF2-SHA256), min 10 chars; 5 failed sign-ins lock
+that ID for 10 minutes; sessions expire after 30 minutes idle; CSRF token on every POST; new
+accounts and admin resets force a password change at next sign-in; deactivating an account ends its
+live session immediately. The session secret is read from `CHROMASEAL_SECRET`, or generated into
+`instance/secret_key` (gitignored). Set `CHROMASEAL_HTTPS=1` when served over HTTPS so the cookie is
+marked Secure. Records created before accounts existed keep their old free-text operator ID and are
+visible to admins only.
+
+Not covered: two-factor sign-in, password-reset by email, per-record edit history beyond the hash chain.
+
 ## Run
 
 ```
@@ -19,7 +44,7 @@ CHROMASEAL_DEMO=1 flask --app app run --host 0.0.0.0   # phone on same network: 
 pytest
 ```
 
-`CHROMASEAL_DEMO=1` enables the tamper-demo button; leave it unset otherwise. The live camera
+`CHROMASEAL_DEMO=1` enables the tamper-demo button (admins only); leave it unset otherwise. The live camera
 guide and GPS need HTTPS (or localhost); without them use the photo picker, and GPS is stored as
 `unavailable`.
 

@@ -1,63 +1,62 @@
 import io
-import os
 
 import pytest
 
 import synth
+from conftest import PW, TOKEN, login
 
 
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    monkeypatch.setenv("CHROMASEAL_DB", str(tmp_path / "t.db"))
-    monkeypatch.setenv("CHROMASEAL_DEMO", "1")
-    import importlib
-    import db
-    importlib.reload(db)
-    import app as app_module
-    importlib.reload(app_module)
-    app_module.CAPTURE_DIR = str(tmp_path)
-    return app_module.app.test_client()
+def client(env):
+    c, r = login(env, "alice")
+    assert r.status_code == 302
+    return c
 
 
 def post(client, strip="positive", light="daylight", **kw):
     data = {"photo": (io.BytesIO(synth.encode_jpeg(synth.photograph(strip, light, **kw))), "p.jpg"),
-            "operator_id": "OP-7", "source": "guide"}
-    return client.post("/analyze", data=data, content_type="multipart/form-data")
+            "source": "guide"}
+    return client.post("/analyze", data=data, content_type="multipart/form-data",
+                       headers={"X-CSRF-Token": TOKEN})
 
 
-def test_demo_flow(client):
-    ids = [post(client, "positive", "warm_lamp").get_json()["record_id"],
-           post(client, "intermediate", "shade").get_json()["record_id"],
-           post(client, "positive", "daylight", blur=6).get_json()["record_id"]]
-    assert b"POSITIVE" in client.get(f"/result/{ids[0]}").data
-    assert b"INCONCLUSIVE" in client.get(f"/result/{ids[1]}").data
-    assert b"blurry" in client.get(f"/result/{ids[2]}").data
-    assert b"FAILED" not in client.get("/log").data
-    assert b"FAIL<" not in client.get(f"/verify/{ids[0]}").data
-    client.post(f"/tamper-demo/{ids[0]}")
-    assert b"FAIL<" in client.get(f"/verify/{ids[0]}").data
-    assert b"FAIL<" in client.get(f"/verify/{ids[1]}").data       # link to tampered record
-    assert b"FAIL<" not in client.get(f"/verify/{ids[2]}").data   # later record unaffected
-    assert b"FAILED" in client.get("/log").data
+def test_demo_flow(env):
+    admin, _ = login(env, "admin1")
+    ids = [post(admin, "positive", "warm_lamp").get_json()["record_id"],
+           post(admin, "intermediate", "shade").get_json()["record_id"],
+           post(admin, "positive", "daylight", blur=6).get_json()["record_id"]]
+    assert b"POSITIVE" in admin.get(f"/result/{ids[0]}").data
+    assert b"INCONCLUSIVE" in admin.get(f"/result/{ids[1]}").data
+    assert b"blurry" in admin.get(f"/result/{ids[2]}").data
+    assert b"FAILED" not in admin.get("/log").data
+    assert b"FAIL<" not in admin.get(f"/verify/{ids[0]}").data
+    admin.post(f"/tamper-demo/{ids[0]}", data={"_csrf": TOKEN})
+    assert b"FAIL<" in admin.get(f"/verify/{ids[0]}").data
+    assert b"FAIL<" in admin.get(f"/verify/{ids[1]}").data       # link to tampered record
+    assert b"FAIL<" not in admin.get(f"/verify/{ids[2]}").data   # later record unaffected
+    assert b"FAILED" in admin.get("/log").data
 
 
 def test_filters_and_validation(client):
     post(client)
     assert b"No records" in client.get("/log?outcome=NEGATIVE").data
-    assert b"OP-7" in client.get("/log?operator=OP").data
-    bad = client.post("/analyze", data={"operator_id": "x"}, content_type="multipart/form-data")
+    assert b"alice" in client.get("/log").data
+    bad = client.post("/analyze", data={}, content_type="multipart/form-data",
+                      headers={"X-CSRF-Token": TOKEN})
     assert bad.status_code == 400
 
 
-def test_tamper_disabled_without_flag(client):
-    import app as app_module
-    app_module.DEMO_MODE = False
-    rid = post(client).get_json()["record_id"]
-    assert client.post(f"/tamper-demo/{rid}").status_code == 404
+def test_tamper_needs_demo_flag_and_admin(env):
+    alice, _ = login(env, "alice")
+    rid = post(alice).get_json()["record_id"]
+    assert alice.post(f"/tamper-demo/{rid}", data={"_csrf": TOKEN}).status_code == 403
+    env.DEMO_MODE = False
+    admin, _ = login(env, "admin1")
+    assert admin.post(f"/tamper-demo/{rid}", data={"_csrf": TOKEN}).status_code == 404
 
 
 def test_pdf_report_and_navigation(client):
-    a = post(client, "positive", "warm_lamp", ).get_json()["record_id"]
+    a = post(client, "positive", "warm_lamp").get_json()["record_id"]
     b = post(client, "intermediate", "shade").get_json()["record_id"]
     r = client.get(f"/report/{a}.pdf")
     assert r.status_code == 200 and r.data[:5] == b"%PDF-" and r.mimetype == "application/pdf"
@@ -68,13 +67,12 @@ def test_pdf_report_and_navigation(client):
     assert b"/report/" in client.get("/log").data
 
 
-def test_pdf_contains_gps(client):
-    import io as _io
-    data = {"photo": (_io.BytesIO(synth.encode_jpeg(synth.photograph())), "p.jpg"), "operator_id": "OP",
+def test_gps_stored(client):
+    import db as dbm
+    data = {"photo": (io.BytesIO(synth.encode_jpeg(synth.photograph())), "p.jpg"),
             "source": "guide", "gps_lat": "12.971598", "gps_lon": "77.594562"}
-    rid = client.post("/analyze", data=data, content_type="multipart/form-data").get_json()["record_id"]
-    import report as rp, db as dbm
+    rid = client.post("/analyze", data=data, content_type="multipart/form-data",
+                      headers={"X-CSRF-Token": TOKEN}).get_json()["record_id"]
     rec, _ = dbm.get_record(rid)
-    assert rec["fields"]["gps_lat"] == 12.971598
-    pdf = client.get(f"/report/{rid}.pdf").data
-    assert len(pdf) > 5000
+    assert rec["fields"]["gps_lat"] == 12.971598 and rec["fields"]["gps_status"] == "available"
+    assert len(client.get(f"/report/{rid}.pdf").data) > 5000

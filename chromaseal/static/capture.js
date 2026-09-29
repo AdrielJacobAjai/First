@@ -56,8 +56,8 @@
       blob = b; source = "guide"; go.disabled = false;
       $("previewImg").src = URL.createObjectURL(b); $("preview").hidden = false;
       $("retake").hidden = false; $("hint").hidden = true;
-      msg.textContent = "Photo captured. Enter your operator ID below and press Analyse.";
-      $("operator_id").focus();
+      msg.textContent = "Photo captured. Press Analyse.";
+      go.focus();
       stream.getTracks().forEach((t) => t.stop());
       $("stage").hidden = true; $("snap").hidden = true; $("cam").hidden = false;
     }, "image/jpeg", 0.95);
@@ -74,12 +74,11 @@
     go.disabled = true; msg.textContent = "Analysing…";
     const fd = new FormData();
     fd.append("photo", blob, "capture.jpg");
-    fd.append("operator_id", $("operator_id").value);
     fd.append("test_id", $("test_id").value);
     fd.append("source", source);
     if (gps) { fd.append("gps_lat", gps.lat); fd.append("gps_lon", gps.lon); }
     try {
-      const res = await fetch("/analyze", { method: "POST", body: fd });
+      const res = await fetch("/analyze", { method: "POST", body: fd, headers: { "X-CSRF-Token": window.CSRF } });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Upload failed");
       window.location = data.redirect;

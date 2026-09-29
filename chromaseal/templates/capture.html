@@ -15,8 +15,7 @@
     <button id="retake" type="button" class="secondary" hidden>Retake</button>
   </div>
   <form id="form" autocomplete="off">
-    <label for="operator_id">Operator ID</label>
-    <input id="operator_id" name="operator_id" required maxlength="64">
+    <p>Signed in as <b>{{ current_user.username }}</b> ({{ current_user.display_name }}) — recorded as the operator.</p>
     <label for="test_id">Test ID (optional)</label>
     <input id="test_id" name="test_id" maxlength="64" placeholder="auto-generated if blank">
     <label for="photo">…or take / choose a photo</label>
@@ -25,6 +24,6 @@
     <button id="go" type="submit" disabled>Analyse</button>
   </form>
 </div>
-<script>window.BOARD_ASPECT = {{ aspect }};</script>
+<script>window.BOARD_ASPECT = {{ aspect }}; window.CSRF = {{ csrf_token()|tojson }};</script>
 <script src="{{ url_for('static', filename='capture.js') }}"></script>
 {% endblock %}

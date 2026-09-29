@@ -6,8 +6,9 @@ from datetime import datetime, timezone
 
 import cv2
 import numpy as np
-from flask import Flask, Response, abort, jsonify, redirect, render_template, request, send_file, url_for
+from flask import Flask, Response, abort, g, jsonify, redirect, render_template, request, send_file, url_for
 
+import auth
 import db
 import hashing
 import report
@@ -27,6 +28,16 @@ DEMO_MODE = os.environ.get("CHROMASEAL_DEMO") == "1"
 
 os.makedirs(CAPTURE_DIR, exist_ok=True)
 db.init_db()
+app.secret_key = auth.secret_key(BASE)
+auth.register(app)
+
+
+def _record_or_404(record_id):
+    """Fetch a record the signed-in user may see (officers: own only). Others get 404, not 403."""
+    rec, prev = db.get_record(record_id)
+    if rec is None or not auth.can_access(rec["fields"]):
+        abort(404)
+    return rec, prev
 
 
 @app.context_processor
@@ -56,9 +67,9 @@ def capture():
 @app.post("/analyze")
 def analyze_route():
     photo = request.files.get("photo")
-    operator = _clean(request.form.get("operator_id"))
-    if photo is None or not operator:
-        return jsonify(error="A photo and an operator ID are required."), 400
+    operator = g.user["username"]          # locked to the login; any submitted value is ignored
+    if photo is None:
+        return jsonify(error="A photo is required."), 400
     raw = photo.read()
     img = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)  # honours EXIF rotation
     if img is None:
@@ -95,9 +106,7 @@ def analyze_route():
 
 @app.get("/result/<int:record_id>")
 def result(record_id):
-    rec, _ = db.get_record(record_id)
-    if rec is None:
-        abort(404)
+    rec, _ = _record_or_404(record_id)
     f = rec["fields"]
     corrected = os.path.exists(os.path.join(CAPTURE_DIR, f["image_path"].replace(".jpg", "_corrected.jpg")))
     return render_template("result.html", rec=rec, f=f, record_id=record_id, corrected=corrected)
@@ -105,8 +114,8 @@ def result(record_id):
 
 @app.get("/image/<int:record_id>/<kind>")
 def image(record_id, kind):
-    rec, _ = db.get_record(record_id)
-    if rec is None or kind not in ("raw", "corrected"):
+    rec, _ = _record_or_404(record_id)
+    if kind not in ("raw", "corrected"):
         abort(404)
     name = rec["fields"]["image_path"]
     if kind == "corrected":
@@ -128,22 +137,25 @@ def _read_image(rec):
 @app.get("/log")
 def log():
     filters = {k: request.args.get(k, "").strip() for k in ("operator", "outcome", "date_from", "date_to")}
-    rows = db.list_records(filters["operator"], filters["outcome"] if filters["outcome"] in OUTCOMES else None,
-                           filters["date_from"] or None, filters["date_to"] or None)
+    is_admin = g.user["role"] == "admin"
+    rows = db.list_records(filters["operator"] if is_admin else None,
+                           filters["outcome"] if filters["outcome"] in OUTCOMES else None,
+                           filters["date_from"] or None, filters["date_to"] or None,
+                           owner=None if is_admin else g.user["username"])
     status, prev = {}, hashing.GENESIS_HASH          # whole-chain check, one pass
     for rec in db.all_records_ordered():
         status[rec["id"]] = all(hashing.verify_record(rec, _read_image(rec), prev).values())
         prev = hashing.recompute_hash(rec)
-    return render_template("log.html", rows=rows, filters=filters, outcomes=OUTCOMES, status=status)
+    return render_template("log.html", rows=rows, filters=filters, outcomes=OUTCOMES, status=status,
+                           is_admin=is_admin)
 
 
 @app.get("/verify/<int:record_id>")
 def verify(record_id):
-    rec, prev = db.get_record(record_id)
-    if rec is None:
-        abort(404)
+    rec, prev = _record_or_404(record_id)
     checks = hashing.verify_record(rec, _read_image(rec), db.previous_hash_for(prev))
-    before, after = db.neighbour_ids(record_id)
+    own = None if g.user["role"] == "admin" else g.user["username"]
+    before, after = db.neighbour_ids(record_id, owner=own)
     return render_template("verify.html", rec=rec, f=rec["fields"], checks=checks,
                            record_id=record_id, prev_id=prev["id"] if prev else None,
                            before=before, after=after)
@@ -151,9 +163,7 @@ def verify(record_id):
 
 @app.get("/report/<int:record_id>.pdf")
 def report_pdf(record_id):
-    rec, prev = db.get_record(record_id)
-    if rec is None:
-        abort(404)
+    rec, prev = _record_or_404(record_id)
     f = rec["fields"]
     checks = hashing.verify_record(rec, _read_image(rec), db.previous_hash_for(prev))
     raw = os.path.join(CAPTURE_DIR, os.path.basename(f["image_path"]))
@@ -171,6 +181,8 @@ def report_pdf(record_id):
 def tamper_demo(record_id):
     if not DEMO_MODE:
         abort(404)
+    if g.user["role"] != "admin":
+        abort(403)
     if not db.tamper_field(record_id):
         abort(404)
     return redirect(url_for("verify", record_id=record_id))
