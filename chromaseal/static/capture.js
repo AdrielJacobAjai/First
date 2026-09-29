@@ -26,6 +26,11 @@
     return { x, y, w, h };
   }
 
+  $("retake").addEventListener("click", () => {
+    blob = null; go.disabled = true; $("preview").hidden = true; $("retake").hidden = true;
+    $("hint").hidden = false; msg.textContent = ""; $("cam").click();
+  });
+
   $("cam").addEventListener("click", async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       msg.textContent = "Live camera needs HTTPS or localhost. Use the photo picker below instead.";
@@ -38,17 +43,21 @@
     v.srcObject = stream;
     v.addEventListener("loadedmetadata", layoutGuide);
     $("stage").hidden = false; $("snap").hidden = false; $("cam").hidden = true;
+    $("preview").hidden = true; msg.textContent = "Fit the card inside the yellow frame, then tap Take photo.";
   });
 
   $("snap").addEventListener("click", () => {
     const v = $("video"), r = layoutGuide();
-    if (!r) return;
+    if (!r) { msg.textContent = "Camera is still starting — wait a moment and try again."; return; }
     const c = document.createElement("canvas");
     c.width = Math.round(r.w * v.videoWidth); c.height = Math.round(r.h * v.videoHeight);
     c.getContext("2d").drawImage(v, r.x * v.videoWidth, r.y * v.videoHeight, c.width, c.height, 0, 0, c.width, c.height);
     c.toBlob((b) => {   // cropped to the guide frame: the whole image IS the card
       blob = b; source = "guide"; go.disabled = false;
-      msg.textContent = "Photo captured. Enter operator ID and press Analyse.";
+      $("previewImg").src = URL.createObjectURL(b); $("preview").hidden = false;
+      $("retake").hidden = false; $("hint").hidden = true;
+      msg.textContent = "Photo captured. Enter your operator ID below and press Analyse.";
+      $("operator_id").focus();
       stream.getTracks().forEach((t) => t.stop());
       $("stage").hidden = true; $("snap").hidden = true; $("cam").hidden = false;
     }, "image/jpeg", 0.95);

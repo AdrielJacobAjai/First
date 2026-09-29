@@ -6,10 +6,13 @@
     <video id="video" autoplay playsinline muted style="width:100%;border-radius:8px;background:#000"></video>
     <div id="guide" style="position:absolute;border:3px dashed #ffe066;box-shadow:0 0 0 9999px rgba(0,0,0,.45);pointer-events:none"></div>
   </div>
+  <div id="preview" hidden style="margin-top:.6rem"><b>Captured photo</b> — check the whole card is visible and sharp.<br><img id="previewImg" alt="captured photo"></div>
+  <p id="msg" role="status" style="font-weight:600"></p>
   <p id="hint" class="notice" style="margin-top:.6rem">Hold the phone <b>landscape</b>. Fit the black-bordered card, with the strip in its slot, inside the yellow frame.</p>
   <div class="row" style="margin-top:.6rem">
     <button id="snap" type="button" hidden>Take photo</button>
     <button id="cam" type="button" class="secondary">Use live camera guide</button>
+    <button id="retake" type="button" class="secondary" hidden>Retake</button>
   </div>
   <form id="form" autocomplete="off">
     <label for="operator_id">Operator ID</label>
@@ -20,7 +23,6 @@
     <input id="photo" type="file" accept="image/*" capture="environment">
     <p id="gps" style="font-size:.85rem;color:#555">GPS: checking…</p>
     <button id="go" type="submit" disabled>Analyse</button>
-    <p id="msg" role="status"></p>
   </form>
 </div>
 <script>window.BOARD_ASPECT = {{ aspect }};</script>

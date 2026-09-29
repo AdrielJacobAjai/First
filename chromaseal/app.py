@@ -155,6 +155,11 @@ def tamper_demo(record_id):
     return redirect(url_for("verify", record_id=record_id))
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return "", 204
+
+
 @app.get("/about")
 def about():
     return render_template("about.html")
