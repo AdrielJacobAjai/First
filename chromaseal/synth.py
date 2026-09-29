@@ -32,25 +32,25 @@ STRIPS = {
 }
 
 
-def render_board(strip_rgb):
+def render_board(strip_rgb, patches=None):
     img = np.zeros((H, W, 3), np.uint8)
     img[:] = PAPER
     bw = int(0.035 * H)
     cv2.rectangle(img, (0, 0), (W - 1, H - 1), (0, 0, 0), bw * 2)  # thick black border
     for name, box in card.patch_boxes(W, H).items():
         x, y, w, h = box
-        img[y:y + h, x:x + w] = card.PATCH_TRUE_SRGB[name]
+        img[y:y + h, x:x + w] = (patches or card.PATCH_TRUE_SRGB)[name]
     x, y, w, h = card.strip_box(W, H)
     img[y:y + h, x:x + w] = strip_rgb
     return img  # RGB
 
 
 def photograph(strip="positive", light="daylight", blur=0, exposure=1.0,
-               seed=0, margin=0):
+               seed=0, margin=0, patches=None, strip_rgb=None):
     """Return a BGR uint8 'photo'. margin>0 adds a dark table around the board."""
     rng = np.random.default_rng(seed)
     A, off = LIGHTS[light]
-    lin = srgb_to_linear(render_board(STRIPS[strip]).astype(np.float64) / 255.0)
+    lin = srgb_to_linear(render_board(strip_rgb if strip_rgb is not None else STRIPS[strip], patches).astype(np.float64) / 255.0)
     lin = (lin @ A.T) * exposure + off
     lin += rng.normal(0, 0.002, lin.shape)
     rgb = (linear_to_srgb(lin) * 255 + 0.5).astype(np.uint8)

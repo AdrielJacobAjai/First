@@ -9,16 +9,20 @@ import numpy as np
 from colour_pipeline import srgb_uint8_to_lab
 from reference_card import PATCH_TRUE_SRGB
 
-_TARGET = PATCH_TRUE_SRGB["reagent_positive"]
-_BLANK = PATCH_TRUE_SRGB["reagent_pale"]
 
-KIT_PROFILES = {
-    "marquis_mdma_v1": {
-        "label": "Marquis reagent / MDMA (mock swatches)",
-        "target_lab": srgb_uint8_to_lab(_TARGET),
-        "blank_lab": srgb_uint8_to_lab(_BLANK),
-        "max_distance": 20.0,   # placeholder
-        "min_margin": 5.0,      # placeholder
-    },
-}
+
+def build_profiles():
+    """Built from the card's current true values (nominal, or the saved per-card calibration)."""
+    return {
+        "marquis_mdma_v1": {
+            "label": "Marquis reagent / MDMA (mock swatches)",
+            "target_lab": srgb_uint8_to_lab(PATCH_TRUE_SRGB["reagent_positive"]),
+            "blank_lab": srgb_uint8_to_lab(PATCH_TRUE_SRGB["reagent_pale"]),
+            "max_distance": 20.0,   # placeholder
+            "min_margin": 5.0,      # placeholder
+        },
+    }
+
+
+KIT_PROFILES = build_profiles()
 DEFAULT_PROFILE = "marquis_mdma_v1"

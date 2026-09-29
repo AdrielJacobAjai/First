@@ -34,6 +34,36 @@ PATCH_TRUE_SRGB = {
     "reagent_positive": (40, 22, 52),         # placeholder estimate
 }
 
+# --- per-card calibration -----------------------------------------------------
+# A printer never reproduces the nominal values above, so each PRINTED card should be measured
+# once (python calibrate_card.py photo1.jpg photo2.jpg ...). The result is stored in
+# card_calibration.json and overrides the nominal values for every patch it contains.
+import json
+import os
+
+CALIBRATION_PATH = os.environ.get(
+    "CHROMASEAL_CARD_CAL", os.path.join(os.path.dirname(os.path.abspath(__file__)), "card_calibration.json"))
+CALIBRATION_INFO = None
+
+
+def load_calibration(path=None):
+    """Apply a saved card calibration over the nominal values. Returns its metadata or None."""
+    global CALIBRATION_INFO
+    path = path or CALIBRATION_PATH
+    if not os.path.exists(path):
+        CALIBRATION_INFO = None
+        return None
+    with open(path) as fh:
+        data = json.load(fh)
+    for name, rgb in data["patches"].items():
+        if name in PATCH_TRUE_SRGB:
+            PATCH_TRUE_SRGB[name] = tuple(int(round(v)) for v in rgb)
+    CALIBRATION_INFO = {k: v for k, v in data.items() if k != "patches"}
+    return CALIBRATION_INFO
+
+
+load_calibration()
+
 # Layout, fractions of the board (x, y, w, h)
 _ROW_X0, _ROW_X1 = 0.06, 0.94
 _ROW_Y, _ROW_H = 0.10, 0.34

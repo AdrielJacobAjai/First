@@ -10,6 +10,7 @@ from flask import Flask, Response, abort, g, jsonify, redirect, render_template,
 
 import auth
 import db
+import reference_card
 import hashing
 import report
 from colour_pipeline import analyze
@@ -42,7 +43,7 @@ def _record_or_404(record_id):
 
 @app.context_processor
 def inject_globals():
-    return {"demo_mode": DEMO_MODE}
+    return {"demo_mode": DEMO_MODE, "card_cal": reference_card.CALIBRATION_INFO}
 
 
 def _clean(value, limit=64):
