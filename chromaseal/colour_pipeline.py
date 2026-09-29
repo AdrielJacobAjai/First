@@ -176,19 +176,6 @@ def _row_lums(board_bgr):
             for n in card.PATCH_ORDER]
 
 
-def _looks_like_board(board_bgr):
-    """True if the nine patch positions show the card's brightness pattern (white > grey > black
-    and a strong match to the expected row), whatever the lighting."""
-    obs = _row_lums(board_bgr)
-    if not (obs[0] - obs[1] >= MIN_LUM_STEP and obs[1] - obs[2] >= MIN_LUM_STEP):
-        return False
-    exp = [float(np.dot(np.array(card.PATCH_TRUE_SRGB[n]) / 255.0, (0.2126, 0.7152, 0.0722)) * 255)
-           for n in card.PATCH_ORDER]
-    if np.std(obs) < 1e-6:
-        return False
-    return float(np.corrcoef(obs, exp)[0, 1]) >= MIN_ROW_CORRELATION
-
-
 def _frame_quads(gray, small_area, dark):
     """Corner quads of large dark (dark=True) or bright (dark=False) blobs, biggest first."""
     otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)[0]
@@ -231,23 +218,158 @@ def _warp_candidates(image_bgr):
             yield cv2.warpPerspective(small, M, (WARP_W, WARP_H), flags=cv2.INTER_AREA)
 
 
+# --- locating the card from its patches -------------------------------------
+# Real prints often lose or shrink the black border (printer margins, "fit to page"), and on a sunlit
+# wooden table the paper and the table look alike. The nine patches themselves are the reliable
+# feature: flat, tall rectangles in an evenly spaced row. Find them, then fit a homography from
+# their corners to the known layout.
+PATCH_DETECT_WIDTH = 900
+
+
+def _flat_patch_rects(small_bgr):
+    """Tall, flat-coloured rectangles: (cx, cy, w, h, corners) in `small_bgr` pixel coordinates."""
+    ms = cv2.pyrMeanShiftFiltering(small_bgr, 10, 20)
+    lab = cv2.cvtColor(ms, cv2.COLOR_BGR2LAB)
+    edges = np.zeros(lab.shape[:2], np.uint8)
+    for ch in range(3):
+        edges |= cv2.Canny(lab[..., ch], 20, 60)
+    edges = cv2.dilate(edges, np.ones((3, 3), np.uint8))
+    n, lbl, st, _ = cv2.connectedComponentsWithStats((edges == 0).astype(np.uint8), connectivity=4)
+    area = small_bgr.shape[0] * small_bgr.shape[1]
+    rects = []
+    for i in range(1, n):
+        x, y, w, h, a = st[i]
+        if not (0.004 * area < a < 0.05 * area):
+            continue
+        m = (lbl[y:y + h, x:x + w] == i).astype(np.uint8)
+        cnts, _ = cv2.findContours(m, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        c = max(cnts, key=cv2.contourArea)
+        (cx, cy), (rw, rh), ang = cv2.minAreaRect(c)
+        if min(rw, rh) < 8:
+            continue
+        fill, ar = cv2.contourArea(c) / (rw * rh), max(rw, rh) / min(rw, rh)
+        if fill > 0.8 and 1.7 < ar < 3.2:
+            box = cv2.boxPoints(((cx + x, cy + y), (rw, rh), ang))
+            rects.append((cx + x, cy + y, max(rw, rh), min(rw, rh), box))
+    return rects
+
+
+def _row_of_patches(rects):
+    """Largest group of similar rectangles lying on one straight line (RANSAC over pairs)."""
+    best = []
+    for i in range(len(rects)):
+        for j in range(i + 1, len(rects)):
+            p, q = np.array(rects[i][:2]), np.array(rects[j][:2])
+            d = q - p
+            if np.linalg.norm(d) < 1:
+                continue
+            u = d / np.linalg.norm(d)
+            normal = np.array([-u[1], u[0]])
+            size = rects[i][2]
+            grp = [r for r in rects
+                   if abs(np.dot(np.array(r[:2]) - p, normal)) < 0.25 * size
+                   and 0.8 < r[2] / size < 1.25]
+            if len(grp) > len(best):
+                best = grp
+    # de-duplicate near-identical detections of one patch
+    out = []
+    for r in sorted(best, key=lambda r: (r[0], r[1])):
+        if not any(np.hypot(r[0] - o[0], r[1] - o[1]) < 0.4 * r[3] for o in out):
+            out.append(r)
+    return out
+
+
+def _patch_row_boards(image_bgr):
+    """Yield straightened boards for each plausible way of matching the detected row to the layout."""
+    ih, iw = image_bgr.shape[:2]
+    s_det = min(1.0, PATCH_DETECT_WIDTH / max(ih, iw))
+    small = cv2.resize(image_bgr, None, fx=s_det, fy=s_det, interpolation=cv2.INTER_AREA) if s_det < 1 else image_bgr
+    row = _row_of_patches(_flat_patch_rects(small))
+    if len(row) < 4:
+        return
+    centres = np.array([r[:2] for r in row])
+    u = np.linalg.lstsq(np.c_[centres[:, 0], np.ones(len(row))], centres[:, 1], rcond=None)[0]
+    axis = np.array([1.0, u[0]]) / np.hypot(1.0, u[0])                # left-to-right guess
+    if abs(np.diff(centres[:, 0]).sum()) < 0.3 * abs(np.diff(centres[:, 1]).sum()):   # near-vertical row
+        v = centres[-1] - centres[0]
+        axis = v / np.linalg.norm(v)
+    normal = np.array([-axis[1], axis[0]])
+    pos = centres @ axis
+    order = np.argsort(pos)
+    row, pos = [row[k] for k in order], pos[order]
+    spacing = np.diff(pos)
+    pitch = np.median(spacing[spacing < 1.5 * np.median(spacing)]) if len(spacing) else 0
+    if pitch <= 0:
+        return
+    slots = np.rint((pos - pos[0]) / pitch).astype(int)
+    span = slots[-1] + 1
+    if span > len(card.PATCH_ORDER) or len(set(slots)) != len(slots):
+        return
+
+    # larger warp source: keep detail without processing the full-size photo
+    s_w = min(1.0, DETECT_MAX_SIDE / max(ih, iw))
+    big = cv2.resize(image_bgr, None, fx=s_w, fy=s_w, interpolation=cv2.INTER_AREA) if s_w < 1 else image_bgr
+    k = s_w / s_det
+    boxes = card.patch_boxes(WARP_W, WARP_H)
+    for flip in (False, True):
+        for start in range(0, len(card.PATCH_ORDER) - span + 1):
+            src, dst = [], []
+            for r, slot in zip(row, slots):
+                idx = (span - 1 - slot if flip else slot) + start
+                if not 0 <= idx < len(card.PATCH_ORDER):
+                    break
+                bx, by, bw, bh = boxes[card.PATCH_ORDER[idx]]
+                dst_c = np.array([[bx, by], [bx + bw, by], [bx + bw, by + bh], [bx, by + bh]], np.float32)
+                c = r[4]
+                # order corners along the (possibly flipped) axes: top-left, top-right, bottom-right, bottom-left
+                a = axis * (-1 if flip else 1)
+                nrm = normal * (-1 if flip else 1)
+                sc = [np.dot(p, a) for p in c], [np.dot(p, nrm) for p in c]
+                tl = c[np.argmin(np.array(sc[0]) + np.array(sc[1]))]
+                tr = c[np.argmax(np.array(sc[0]) - np.array(sc[1]))]
+                br = c[np.argmax(np.array(sc[0]) + np.array(sc[1]))]
+                bl = c[np.argmin(np.array(sc[0]) - np.array(sc[1]))]
+                src.extend(np.array([tl, tr, br, bl]) * k)
+                dst.extend(dst_c)
+            else:
+                H, _ = cv2.findHomography(np.array(src, np.float32), np.array(dst, np.float32), cv2.RANSAC, 8.0)
+                if H is not None:
+                    yield cv2.warpPerspective(big, H, (WARP_W, WARP_H), flags=cv2.INTER_AREA)
+
+
+def _board_score(board_bgr):
+    """Correlation of the nine patch brightnesses with the expected row (or -1 if the ramp is wrong)."""
+    obs = _row_lums(board_bgr)
+    if not (obs[0] - obs[1] >= MIN_LUM_STEP and obs[1] - obs[2] >= MIN_LUM_STEP) or np.std(obs) < 1e-6:
+        return -1.0
+    exp = [float(np.dot(np.array(card.PATCH_TRUE_SRGB[n]) / 255.0, (0.2126, 0.7152, 0.0722)) * 255)
+           for n in card.PATCH_ORDER]
+    return float(np.corrcoef(obs, exp)[0, 1])
+
+
 def locate_board(image_bgr, source):
     """Return the straightened board image (BGR) or None.
 
     source='guide': the client already cropped to the on-screen alignment frame, so the whole
-    image is the board. source='file': find the dark rectangular border (relative darkness, any
-    tilt/perspective/rotation), straighten it, and accept it only if the white>grey>black patch
-    ramp reads correctly (tries 180 degrees too). If no frame is found but the image itself has
-    the card's proportions, assume it was already cropped to the card.
+    image is the board. source='file': gather candidates from (1) the row of patches, (2) a dark
+    border frame, (3) bright paper inside a border, straighten each, and keep the one whose nine
+    patch brightnesses best match the card (correlation >= MIN_ROW_CORRELATION, tried at 0 and
+    180 degrees). If nothing fits but the image itself has the card's proportions, assume it was
+    already cropped to the card.
     """
     if source == "guide":
         return image_bgr
-    for board in _warp_candidates(image_bgr):
-        for b in (board, cv2.rotate(board, cv2.ROTATE_180)):
-            if _looks_like_board(b):
-                return b
+    best, best_score = None, MIN_ROW_CORRELATION
+    for gen in (_patch_row_boards, _warp_candidates):
+        for board in gen(image_bgr):
+            for b in (board, cv2.rotate(board, cv2.ROTATE_180)):
+                score = _board_score(b)
+                if score > best_score:
+                    best, best_score = b, score
+    if best is not None:
+        return best
     ih, iw = image_bgr.shape[:2]
-    if _aspect_ok(iw, ih) and _looks_like_board(image_bgr):
+    if _aspect_ok(iw, ih) and _board_score(image_bgr) >= MIN_ROW_CORRELATION:
         return image_bgr
     return None
 

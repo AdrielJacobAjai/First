@@ -32,11 +32,12 @@ STRIPS = {
 }
 
 
-def render_board(strip_rgb, patches=None):
+def render_board(strip_rgb, patches=None, border=True):
     img = np.zeros((H, W, 3), np.uint8)
     img[:] = PAPER
     bw = int(0.035 * H)
-    cv2.rectangle(img, (0, 0), (W - 1, H - 1), (0, 0, 0), bw * 2)  # thick black border
+    if border:
+        cv2.rectangle(img, (0, 0), (W - 1, H - 1), (0, 0, 0), bw * 2)  # thick black border
     for name, box in card.patch_boxes(W, H).items():
         x, y, w, h = box
         img[y:y + h, x:x + w] = (patches or card.PATCH_TRUE_SRGB)[name]
@@ -45,15 +46,21 @@ def render_board(strip_rgb, patches=None):
     return img  # RGB
 
 
+def _light(rgb_uint8, light, seed=0, exposure=1.0):
+    """Apply a lighting distortion in linear light, add sensor noise. RGB uint8 in, RGB uint8 out."""
+    rng = np.random.default_rng(seed)
+    A, off = LIGHTS[light]
+    lin = srgb_to_linear(rgb_uint8.astype(np.float64) / 255.0)
+    lin = (lin @ A.T) * exposure + off
+    lin += rng.normal(0, 0.002, lin.shape)
+    return (linear_to_srgb(lin) * 255 + 0.5).astype(np.uint8)
+
+
 def photograph(strip="positive", light="daylight", blur=0, exposure=1.0,
                seed=0, margin=0, patches=None, strip_rgb=None):
     """Return a BGR uint8 'photo'. margin>0 adds a dark table around the board."""
     rng = np.random.default_rng(seed)
-    A, off = LIGHTS[light]
-    lin = srgb_to_linear(render_board(strip_rgb if strip_rgb is not None else STRIPS[strip], patches).astype(np.float64) / 255.0)
-    lin = (lin @ A.T) * exposure + off
-    lin += rng.normal(0, 0.002, lin.shape)
-    rgb = (linear_to_srgb(lin) * 255 + 0.5).astype(np.uint8)
+    rgb = _light(render_board(strip_rgb if strip_rgb is not None else STRIPS[strip], patches), light, seed, exposure)
     bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
     if blur:
         bgr = cv2.GaussianBlur(bgr, (0, 0), blur)
@@ -64,7 +71,7 @@ def photograph(strip="positive", light="daylight", blur=0, exposure=1.0,
 
 
 def in_scene(board_bgr, angle=0.0, skew=0.0, bg=(60, 90, 70), out=(1600, 1200), fill=0.6, quarter_turns=0,
-             border_grey=None):
+             border_grey=None, wood_bg=None):
     """Put the board into a larger 'real world' photo: rotated, seen at an angle, on a background.
 
     skew: perspective strength (0..0.25); border_grey: repaint the near-black border with this grey
@@ -88,9 +95,35 @@ def in_scene(board_bgr, angle=0.0, skew=0.0, bg=(60, 90, 70), out=(1600, 1200), 
     M = cv2.getPerspectiveTransform(src, dst.astype(np.float32))
     scene = np.zeros((oh, ow, 3), np.uint8)
     scene[:] = bg
+    if wood_bg is not None:
+        scene = wood_bg.copy()
     warped = cv2.warpPerspective(board, M, (ow, oh), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_TRANSPARENT,
                                  dst=scene)
     return np.rot90(warped, quarter_turns).copy()
+
+
+def wood(size=(1600, 1200), seed=0):
+    """Sunlit, low-chroma, streaky table surface about as bright as paper (a hard background)."""
+    rng = np.random.default_rng(seed)
+    w, h = size
+    streaks = cv2.GaussianBlur(rng.normal(0, 1, (h, w)).astype(np.float32), (0, 0), sigmaX=40, sigmaY=2.5)
+    streaks = 28 * streaks / (streaks.std() + 1e-6)
+    base = np.array([150, 176, 196], np.float32)                      # BGR tan, bright
+    return np.clip(base + streaks[..., None] + rng.normal(0, 3, (h, w, 1)), 0, 255).astype(np.uint8)
+
+
+def print_photo(strip="positive", light="daylight", patches=None, strip_rgb=None, angle=5.0, skew=0.05,
+                seed=0, quarter_turns=0):
+    """A phone photo of a home print: no thick border, white page margin, hairline outline, on a wood table."""
+    board = render_board(strip_rgb if strip_rgb is not None else STRIPS[strip], patches, border=False)
+    page = np.full((int(H * 1.32), int(W * 1.14), 3), 250, np.uint8)
+    y0, x0 = (page.shape[0] - H) // 2, (page.shape[1] - W) // 2
+    page[y0:y0 + H, x0:x0 + W] = board
+    cv2.rectangle(page, (x0 + 6, y0 + 6), (x0 + W - 7, y0 + H - 7), (40, 40, 40), 2)      # hairline outline
+    rgb_lit = _light(page, light, seed)
+    scene = in_scene(cv2.cvtColor(rgb_lit, cv2.COLOR_RGB2BGR), angle=angle, skew=skew, bg=(0, 0, 0),
+                     fill=0.75, quarter_turns=0, wood_bg=wood(seed=seed))
+    return np.rot90(scene, quarter_turns).copy()
 
 
 def encode_jpeg(bgr):

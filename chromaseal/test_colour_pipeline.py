@@ -111,3 +111,19 @@ def test_no_card_in_scene_is_rejected_with_clear_message():
     cv2.rectangle(scene, (300, 300), (900, 800), (30, 30, 30), -1)     # a dark box that is not the card
     r = cp.analyze(scene, PROFILE, source="file")
     assert r["outcome"] == "INVALID_CAPTURE" and "whole reference card" in r["reject_reason"]
+
+
+@pytest.mark.parametrize("kw", [dict(), dict(angle=-12, skew=0.1), dict(angle=8, quarter_turns=1), dict(angle=180)])
+@pytest.mark.parametrize("light", ["warm_lamp", "tubelight", "shade"])
+def test_home_print_without_thick_border_on_wood_table(light, kw):
+    """A home print (hairline outline, white page margin, no black band) on a bright wooden table."""
+    r = cp.analyze(synth.print_photo(light=light, **kw), PROFILE, source="file")
+    assert r["outcome"] == "POSITIVE", r["reject_reason"]
+
+
+def test_calibration_measures_home_print_photos():
+    import calibrate_card as cc
+    runs = [cc.measure_image(synth.print_photo(light="daylight", seed=s, angle=a)) for s, a in ((1, 3), (2, -6), (3, 10))]
+    patches, spread = cc.combine(runs)
+    assert spread < 3
+    assert all(abs(patches[n][i] - card.PATCH_TRUE_SRGB[n][i]) < 4 for n in card.PATCH_ORDER for i in range(3))
